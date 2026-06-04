@@ -1,0 +1,33 @@
+# --- Secrets / local config ---
+# Move real DB credentials here instead of hard-coding in db.php.
+.env
+.env.*
+*.pem
+*.key
+secrets/
+
+# --- macOS / OS cruft ---
+.DS_Store
+._*
+Thumbs.db
+
+# --- Dependencies (if you add Composer / npm later) ---
+/vendor/
+/node_modules/
+
+# --- Logs & temp ---
+*.log
+/logs/
+/tmp/
+/cache/
+
+# --- Editor / IDE ---
+.idea/
+# Keep .vscode/ if you want to share editor settings with collaborators;
+# ignore it if those settings are personal.
+# .vscode/
+
+# --- Local DB dumps / backups ---
+*.sqlite
+*.sqlite3
+*.sql.bak

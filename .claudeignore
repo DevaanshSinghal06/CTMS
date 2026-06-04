@@ -1,0 +1,40 @@
+# .claudeignore — files Claude Code should NOT read or send as context.
+# Keeps secrets out of the model's context window and trims noise.
+
+# --- Secrets / credentials ---
+# Real secrets should live in a .env file (gitignored + listed here),
+# not hard-coded. See db.php note in CLAUDE.md.
+.env
+.env.*
+*.pem
+*.key
+secrets/
+
+# --- Dependencies & build artifacts ---
+vendor/
+node_modules/
+composer.lock
+package-lock.json
+*.min.js
+*.min.css
+
+# --- Version control & OS cruft ---
+.git/
+.DS_Store
+Thumbs.db
+
+# --- Logs & local data ---
+*.log
+logs/
+*.sqlite
+*.sqlite3
+*.sql.bak
+
+# --- Editor / IDE ---
+.idea/
+.vscode/
+
+# --- Uploads / generated output (add real paths as the app grows) ---
+uploads/
+tmp/
+cache/
