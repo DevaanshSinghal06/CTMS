@@ -59,6 +59,7 @@ $userCount = $userCountRow["total"] ?? 0;
             <a href="<?php echo BASE_URL; ?>/Dashboards/admin_dashboard.php">Dashboard</a>
             <a href="<?php echo BASE_URL; ?>/Studies/studies.php">Studies</a>
             <a href="<?php echo BASE_URL; ?>/Studies/archived_studies.php">Archived</a>
+            <a href="<?php echo BASE_URL; ?>/Studies/study_assignments.php">Assignments</a>
             <a href="<?php echo BASE_URL; ?>/Users/users.php">Users</a>
             <a href="<?php echo BASE_URL; ?>/Audit/audit_logs.php">Audit Log</a>
             <a href="<?php echo BASE_URL; ?>/Auth/logout.php">Logout</a>
@@ -77,6 +78,12 @@ $userCount = $userCountRow["total"] ?? 0;
             <h3>Studies</h3>
             <div class="stat-number"><?php echo htmlspecialchars($activeStudyCount); ?></div>
             <p>Create and manage active clinical research studies.</p>
+        </a>
+
+        <a href="<?php echo BASE_URL; ?>/Studies/study_assignments.php" class="card card-link">
+            <h3>Study Assignments</h3>
+            <div class="stat-number">↔</div>
+            <p>Assign lead and backup coordinators to active studies.</p>
         </a>
 
         <a href="<?php echo BASE_URL; ?>/Audit/audit_logs.php" class="card card-link">

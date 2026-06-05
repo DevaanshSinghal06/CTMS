@@ -28,7 +28,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         $sponsor = trim($_POST["sponsor"] ?? "");
         $croName = trim($_POST["cro_name"] ?? "");
         $principalInvestigator = trim($_POST["principal_investigator"] ?? "");
-        $status = $_POST["status"] ?? "setup";
+        $status = $_POST["status"] ?? "enrolling";
         $startDate = $_POST["start_date"] ?: null;
         $endDate = $_POST["end_date"] ?: null;
         $notes = trim($_POST["notes"] ?? "");
@@ -101,25 +101,55 @@ if (isset($_GET["archived"])) {
     $success = "Study archived successfully.";
 }
 
-$stmt = $pdo->query("
-    SELECT 
-        id,
-        study_code,
-        study_name,
-        protocol_number,
-        sponsor,
-        cro_name,
-        principal_investigator,
-        status,
-        start_date,
-        end_date,
-        created_at
-    FROM studies
-    WHERE status != 'archived'
-    ORDER BY created_at DESC
-");
+if (isset($_GET["access_denied"])) {
+    $error = "You do not have access to that study.";
+}
 
-$studies = $stmt->fetchAll();
+if ($isAdmin) {
+    $stmt = $pdo->query("
+        SELECT 
+            id,
+            study_code,
+            study_name,
+            protocol_number,
+            sponsor,
+            cro_name,
+            principal_investigator,
+            status,
+            start_date,
+            end_date,
+            created_at
+        FROM studies
+        WHERE status != 'archived'
+        ORDER BY created_at DESC
+    ");
+
+    $studies = $stmt->fetchAll();
+} else {
+    $stmt = $pdo->prepare("
+        SELECT DISTINCT
+            studies.id,
+            studies.study_code,
+            studies.study_name,
+            studies.protocol_number,
+            studies.sponsor,
+            studies.cro_name,
+            studies.principal_investigator,
+            studies.status,
+            studies.start_date,
+            studies.end_date,
+            studies.created_at
+        FROM studies
+        INNER JOIN study_assignments
+            ON studies.id = study_assignments.study_id
+        WHERE studies.status != 'archived'
+            AND study_assignments.user_id = ?
+        ORDER BY studies.created_at DESC
+    ");
+
+    $stmt->execute([$_SESSION["user_id"]]);
+    $studies = $stmt->fetchAll();
+}
 ?>
 
 <!DOCTYPE html>
@@ -144,6 +174,9 @@ $studies = $stmt->fetchAll();
             <a href="<?php echo htmlspecialchars($dashboardLink); ?>">Dashboard</a>
             <a href="<?php echo BASE_URL; ?>/Studies/studies.php">Studies</a>
             <a href="<?php echo BASE_URL; ?>/Studies/archived_studies.php">Archived</a>
+            <?php if ($isAdmin): ?>
+                <a href="<?php echo BASE_URL; ?>/Studies/study_assignments.php">Assignments</a>
+            <?php endif; ?>
             <a href="<?php echo BASE_URL; ?>/Auth/logout.php">Logout</a>
         </div>
     </nav>

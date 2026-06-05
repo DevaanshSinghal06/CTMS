@@ -5,11 +5,17 @@ require_role("coordinator");
 
 $firstName = $_SESSION["first_name"] ?? "Coordinator";
 
-$stmt = $pdo->query("
-    SELECT COUNT(*) AS total 
+$stmt = $pdo->prepare("
+    SELECT COUNT(DISTINCT studies.id) AS total
     FROM studies
-    WHERE status != 'archived'
+    INNER JOIN study_assignments
+        ON studies.id = study_assignments.study_id
+    WHERE studies.status != 'archived'
+        AND study_assignments.user_id = ?
 ");
+$stmt->execute([$_SESSION["user_id"]]);
+$studyCountRow = $stmt->fetch();
+$studyCount = $studyCountRow["total"] ?? 0;
 $studyCountRow = $stmt->fetch();
 $studyCount = $studyCountRow["total"] ?? 0;
 ?>

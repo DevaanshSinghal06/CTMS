@@ -30,6 +30,24 @@ if (!$study) {
     exit;
 }
 
+if (!$isAdmin) {
+    $stmt = $pdo->prepare("
+        SELECT id
+        FROM study_assignments
+        WHERE study_id = ?
+            AND user_id = ?
+        LIMIT 1
+    ");
+
+    $stmt->execute([$studyId, $_SESSION["user_id"]]);
+    $assignment = $stmt->fetch();
+
+    if (!$assignment) {
+        header("Location: " . BASE_URL . "/Studies/studies.php?access_denied=1");
+        exit;
+    }
+}
+
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
     if (!verify_csrf()) {
         http_response_code(400);
