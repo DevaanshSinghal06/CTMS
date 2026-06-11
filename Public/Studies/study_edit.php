@@ -62,6 +62,22 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     $status = $_POST["status"] ?? "setup";
     $startDate = $_POST["start_date"] ?: null;
     $endDate = $_POST["end_date"] ?: null;
+
+    $fpfvDate = $_POST["fpfv_date"] ?: null;
+    $lpfvDate = $_POST["lpfv_date"] ?: null;
+    $lplvDate = $_POST["lplv_date"] ?: null;
+    $enrollmentClosingDate = $_POST["enrollment_closing_date"] ?: null;
+    $studyTerminationDate = $_POST["study_termination_date"] ?: null;
+
+    $competitiveEnrollmentInput = $_POST["competitive_enrollment"] ?? "";
+    $competitiveEnrollment = $competitiveEnrollmentInput === "" ? null : (int) $competitiveEnrollmentInput;
+
+    $budgetedEnrollmentInput = trim($_POST["budgeted_enrollment_number"] ?? "");
+    $budgetedEnrollmentNumber = $budgetedEnrollmentInput === "" ? null : (int) $budgetedEnrollmentInput;
+
+    $siteTargetInput = trim($_POST["site_enrollment_target"] ?? "");
+    $siteEnrollmentTarget = $siteTargetInput === "" ? null : (int) $siteTargetInput;
+
     $notes = trim($_POST["notes"] ?? "");
 
     $allowedStatuses = ["enrolling", "closed_to_enrollment", "terminated"];
@@ -89,6 +105,14 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                 status = ?,
                 start_date = ?,
                 end_date = ?,
+                fpfv_date = ?,
+                lpfv_date = ?,
+                lplv_date = ?,
+                enrollment_closing_date = ?,
+                study_termination_date = ?,
+                competitive_enrollment = ?,
+                budgeted_enrollment_number = ?,
+                site_enrollment_target = ?,
                 notes = ?
             WHERE id = ?
         ");
@@ -99,9 +123,17 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             $sponsor,
             $croName,
             $principalInvestigator,
-            $finalStatus,
+            $status,
             $startDate,
             $endDate,
+            $fpfvDate,
+            $lpfvDate,
+            $lplvDate,
+            $enrollmentClosingDate,
+            $studyTerminationDate,
+            $competitiveEnrollment,
+            $budgetedEnrollmentNumber,
+            $siteEnrollmentTarget,
             $notes,
             $studyId
         ]);
@@ -267,6 +299,91 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                     id="end_date" 
                     name="end_date"
                     value="<?php echo htmlspecialchars($study["end_date"] ?? ""); ?>"
+                >
+            </div>
+
+            <h3 style="margin-top: 28px;">Study Timeline</h3>
+
+            <div class="form-group">
+                <label for="fpfv_date">FPFV Date</label>
+                <input 
+                    type="date" 
+                    id="fpfv_date" 
+                    name="fpfv_date"
+                    value="<?php echo htmlspecialchars($study["fpfv_date"] ?? ""); ?>"
+                >
+            </div>
+
+            <div class="form-group">
+                <label for="lpfv_date">LPFV Date</label>
+                <input 
+                    type="date" 
+                    id="lpfv_date" 
+                    name="lpfv_date"
+                    value="<?php echo htmlspecialchars($study["lpfv_date"] ?? ""); ?>"
+                >
+            </div>
+
+            <div class="form-group">
+                <label for="lplv_date">LPLV Date</label>
+                <input 
+                    type="date" 
+                    id="lplv_date" 
+                    name="lplv_date"
+                    value="<?php echo htmlspecialchars($study["lplv_date"] ?? ""); ?>"
+                >
+            </div>
+
+            <div class="form-group">
+                <label for="enrollment_closing_date">Enrollment Closing Date</label>
+                <input 
+                    type="date" 
+                    id="enrollment_closing_date" 
+                    name="enrollment_closing_date"
+                    value="<?php echo htmlspecialchars($study["enrollment_closing_date"] ?? ""); ?>"
+                >
+            </div>
+
+            <div class="form-group">
+                <label for="study_termination_date">Study Termination Date</label>
+                <input 
+                    type="date" 
+                    id="study_termination_date" 
+                    name="study_termination_date"
+                    value="<?php echo htmlspecialchars($study["study_termination_date"] ?? ""); ?>"
+                >
+            </div>
+
+            <h3 style="margin-top: 28px;">Recruitment</h3>
+
+            <div class="form-group">
+                <label for="competitive_enrollment">Competitive Enrollment</label>
+                <select id="competitive_enrollment" name="competitive_enrollment">
+                    <option value="" <?php echo $study["competitive_enrollment"] === null ? "selected" : ""; ?>>Unknown / Not Set</option>
+                    <option value="1" <?php echo (string)($study["competitive_enrollment"] ?? "") === "1" ? "selected" : ""; ?>>Yes</option>
+                    <option value="0" <?php echo (string)($study["competitive_enrollment"] ?? "") === "0" ? "selected" : ""; ?>>No</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="budgeted_enrollment_number">Budgeted Enrollment Number</label>
+                <input 
+                    type="number" 
+                    id="budgeted_enrollment_number" 
+                    name="budgeted_enrollment_number"
+                    min="0"
+                    value="<?php echo htmlspecialchars($study["budgeted_enrollment_number"] ?? ""); ?>"
+                >
+            </div>
+
+            <div class="form-group">
+                <label for="site_enrollment_target">Internal Site Target</label>
+                <input 
+                    type="number" 
+                    id="site_enrollment_target" 
+                    name="site_enrollment_target"
+                    min="0"
+                    value="<?php echo htmlspecialchars($study["site_enrollment_target"] ?? ""); ?>"
                 >
             </div>
 

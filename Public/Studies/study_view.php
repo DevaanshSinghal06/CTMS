@@ -94,6 +94,12 @@ $statusLabels = [
 ];
 
 $statusLabel = $statusLabels[$study["status"]] ?? $study["status"];
+
+$competitiveEnrollmentLabel = "N/A";
+
+if ($study["competitive_enrollment"] !== null) {
+    $competitiveEnrollmentLabel = (int) $study["competitive_enrollment"] === 1 ? "Yes" : "No";
+}
 ?>
 
 <!DOCTYPE html>
@@ -212,6 +218,38 @@ $statusLabel = $statusLabels[$study["status"]] ?? $study["status"];
                 <tr>
                     <th>End Date</th>
                     <td><?php echo htmlspecialchars($study["end_date"] ?: "N/A"); ?></td>
+                </tr>
+                <tr>
+                    <th>FPFV Date</th>
+                    <td><?php echo htmlspecialchars($study["fpfv_date"] ?: "N/A"); ?></td>
+                </tr>
+                <tr>
+                    <th>LPFV Date</th>
+                    <td><?php echo htmlspecialchars($study["lpfv_date"] ?: "N/A"); ?></td>
+                </tr>
+                <tr>
+                    <th>LPLV Date</th>
+                    <td><?php echo htmlspecialchars($study["lplv_date"] ?: "N/A"); ?></td>
+                </tr>
+                <tr>
+                    <th>Enrollment Closing Date</th>
+                    <td><?php echo htmlspecialchars($study["enrollment_closing_date"] ?: "N/A"); ?></td>
+                </tr>
+                <tr>
+                    <th>Study Termination Date</th>
+                    <td><?php echo htmlspecialchars($study["study_termination_date"] ?: "N/A"); ?></td>
+                </tr>
+                <tr>
+                    <th>Competitive Enrollment</th>
+                    <td><?php echo htmlspecialchars($competitiveEnrollmentLabel); ?></td>
+                </tr>
+                <tr>
+                    <th>Budgeted Enrollment Number</th>
+                    <td><?php echo htmlspecialchars($study["budgeted_enrollment_number"] ?? "N/A"); ?></td>
+                </tr>
+                <tr>
+                    <th>Internal Site Target</th>
+                    <td><?php echo htmlspecialchars($study["site_enrollment_target"] ?? "N/A"); ?></td>
                 </tr>
                 <tr>
                     <th>Notes</th>
