@@ -240,11 +240,14 @@ $statusLabel = $statusLabels[$study["status"]] ?? $study["status"];
             <p>Track site target, budgeted enrollment, and recruitment status.</p>
         </div>
 
-        <div class="card">
-            <h3>Financials</h3>
-            <div class="stat-number">0</div>
-            <p>Future module for payment and invoice tracking.</p>
-        </div>
+        <a 
+            href="<?php echo BASE_URL; ?>/Studies/study_startup_checklist.php?id=<?php echo htmlspecialchars($study["id"]); ?>" 
+            class="card card-link"
+        >
+            <h3>Startup Checklist</h3>
+            <div class="stat-number">Open</div>
+            <p>Track startup activities, regulatory items, training, SIV, and activation.</p>
+        </a>
     </section>
 </main>
 
