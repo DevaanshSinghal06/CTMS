@@ -246,6 +246,12 @@ if ($isAdmin) {
                             <td>
                                 <div class="action-buttons">
                                     <a 
+                                        class="btn btn-primary btn-small" 
+                                        href="<?php echo BASE_URL; ?>/Studies/study_view.php?id=<?php echo htmlspecialchars($study["id"]); ?>"
+                                    >
+                                        View
+                                    </a>
+                                    <a 
                                         class="btn btn-secondary btn-small" 
                                         href="<?php echo BASE_URL; ?>/Studies/study_edit.php?id=<?php echo htmlspecialchars($study["id"]); ?>"
                                     >

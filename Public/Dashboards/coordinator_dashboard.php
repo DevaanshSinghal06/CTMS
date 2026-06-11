@@ -13,11 +13,10 @@ $stmt = $pdo->prepare("
     WHERE studies.status != 'archived'
         AND study_assignments.user_id = ?
 ");
+
 $stmt->execute([$_SESSION["user_id"]]);
-$studyCountRow = $stmt->fetch();
-$studyCount = $studyCountRow["total"] ?? 0;
-$studyCountRow = $stmt->fetch();
-$studyCount = $studyCountRow["total"] ?? 0;
+$activeStudyCountRow = $stmt->fetch();
+$activeStudyCount = $activeStudyCountRow["total"] ?? 0;
 ?>
 
 <!DOCTYPE html>
@@ -56,7 +55,7 @@ $studyCount = $studyCountRow["total"] ?? 0;
     <section class="card-grid">
         <a href="<?php echo BASE_URL; ?>/Studies/studies.php" class="card card-link">
             <h3>My Studies</h3>
-            <div class="stat-number"><?php echo htmlspecialchars($studyCount); ?></div>
+            <div class="stat-number"><?php echo htmlspecialchars($activeStudyCount); ?></div>
             <p>View and update active clinical research studies.</p>
         </a>
 
