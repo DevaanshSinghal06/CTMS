@@ -30,4 +30,5 @@ Thumbs.db
 # --- Local DB dumps / backups ---
 *.sqlite
 *.sqlite3
-*.sql.bak
+*.sql.bak.DS_Store
+.DS_Store
