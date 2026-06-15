@@ -260,11 +260,14 @@ if ($study["competitive_enrollment"] !== null) {
     </section>
 
     <section class="card-grid">
-        <div class="card">
-            <h3>Startup Checklist</h3>
-            <div class="stat-number">0</div>
-            <p>Track startup activities, regulatory items, training, SIV, and activation.</p>
-        </div>
+        <a 
+            href="<?php echo BASE_URL; ?>/Studies/study_subjects.php?id=<?php echo htmlspecialchars($study["id"]); ?>" 
+            class="card card-link"
+        >
+            <h3>Subjects / Screening</h3>
+            <div class="stat-number">Open</div>
+            <p>Link subjects to this study and update screening/enrollment status.</p>
+        </a>
 
         <div class="card">
             <h3>Contacts</h3>
