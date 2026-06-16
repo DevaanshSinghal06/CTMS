@@ -35,6 +35,13 @@ $stmt = $pdo->query("
 ");
 $userCountRow = $stmt->fetch();
 $userCount = $userCountRow["total"] ?? 0;
+
+$stmt = $pdo->query("
+    SELECT COUNT(*) AS total
+    FROM subjects
+");
+$subjectCountRow = $stmt->fetch();
+$subjectCount = $subjectCountRow["total"] ?? 0;
 ?>
 
 <!DOCTYPE html>
@@ -59,6 +66,7 @@ $userCount = $userCountRow["total"] ?? 0;
             <a href="<?php echo BASE_URL; ?>/Dashboards/admin_dashboard.php">Dashboard</a>
             <a href="<?php echo BASE_URL; ?>/Studies/studies.php">Studies</a>
             <a href="<?php echo BASE_URL; ?>/Studies/archived_studies.php">Archived</a>
+            <a href="<?php echo BASE_URL; ?>/Subjects/subjects.php">Subjects</a>
             <a href="<?php echo BASE_URL; ?>/Studies/study_assignments.php">Assignments</a>
             <a href="<?php echo BASE_URL; ?>/Users/users.php">Users</a>
             <a href="<?php echo BASE_URL; ?>/Audit/audit_logs.php">Audit Log</a>
@@ -92,11 +100,11 @@ $userCount = $userCountRow["total"] ?? 0;
             <p>View recent system activity and study change history.</p>
         </a>
 
-        <div class="card">
+        <a href="<?php echo BASE_URL; ?>/Subjects/subjects.php" class="card card-link">
             <h3>Subjects</h3>
-            <div class="stat-number">0</div>
-            <p>View all screened and enrolled subjects.</p>
-        </div>
+            <div class="stat-number"><?php echo htmlspecialchars($subjectCount); ?></div>
+            <p>View reusable subject profiles linked across studies.</p>
+        </a>
 
         <div class="card">
             <h3>Reports</h3>

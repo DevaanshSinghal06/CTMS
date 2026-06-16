@@ -17,6 +17,22 @@ $stmt = $pdo->prepare("
 $stmt->execute([$_SESSION["user_id"]]);
 $activeStudyCountRow = $stmt->fetch();
 $activeStudyCount = $activeStudyCountRow["total"] ?? 0;
+
+$stmt = $pdo->prepare("
+    SELECT COUNT(*) AS total
+    FROM study_subjects
+    INNER JOIN studies
+        ON study_subjects.study_id = studies.id
+    INNER JOIN study_assignments
+        ON studies.id = study_assignments.study_id
+    WHERE studies.status != 'archived'
+        AND study_assignments.user_id = ?
+        AND study_subjects.screening_status = 'screening'
+");
+
+$stmt->execute([$_SESSION["user_id"]]);
+$screeningCountRow = $stmt->fetch();
+$screeningCount = $screeningCountRow["total"] ?? 0;
 ?>
 
 <!DOCTYPE html>
@@ -41,6 +57,7 @@ $activeStudyCount = $activeStudyCountRow["total"] ?? 0;
             <a href="<?php echo BASE_URL; ?>/Dashboards/coordinator_dashboard.php">Dashboard</a>
             <a href="<?php echo BASE_URL; ?>/Studies/studies.php">Studies</a>
             <a href="<?php echo BASE_URL; ?>/Studies/archived_studies.php">Archived</a>
+            <a href="<?php echo BASE_URL; ?>/Subjects/subjects.php">Subjects</a>
             <a href="<?php echo BASE_URL; ?>/Auth/logout.php">Logout</a>
         </div>
     </nav>
@@ -61,8 +78,8 @@ $activeStudyCount = $activeStudyCountRow["total"] ?? 0;
 
         <div class="card">
             <h3>Screening</h3>
-            <div class="stat-number">0</div>
-            <p>Subjects currently being screened for eligibility.</p>
+            <div class="stat-number"><?php echo htmlspecialchars($screeningCount); ?></div>
+            <p>Subjects currently being screened in your assigned studies.</p>
         </div>
 
         <div class="card">

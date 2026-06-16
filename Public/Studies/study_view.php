@@ -95,6 +95,15 @@ $statusLabels = [
 
 $statusLabel = $statusLabels[$study["status"]] ?? $study["status"];
 
+$stmt = $pdo->prepare("
+    SELECT COUNT(*) AS total
+    FROM study_subjects
+    WHERE study_id = ?
+");
+$stmt->execute([$studyId]);
+$subjectCountRow = $stmt->fetch();
+$subjectCount = $subjectCountRow["total"] ?? 0;
+
 $competitiveEnrollmentLabel = "N/A";
 
 if ($study["competitive_enrollment"] !== null) {
@@ -265,7 +274,7 @@ if ($study["competitive_enrollment"] !== null) {
             class="card card-link"
         >
             <h3>Subjects / Screening</h3>
-            <div class="stat-number">Open</div>
+            <div class="stat-number"><?php echo htmlspecialchars($subjectCount); ?></div>
             <p>Link subjects to this study and update screening/enrollment status.</p>
         </a>
 
