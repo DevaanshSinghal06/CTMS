@@ -182,7 +182,9 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     }
 
     if ($action === "create_and_link") {
-        $initials = strtoupper(trim($_POST["initials"] ?? ""));
+        $firstName = trim($_POST["first_name"] ?? "");
+        $lastName = trim($_POST["last_name"] ?? "");
+        $initials = generate_subject_initials($firstName, $lastName);
         $dateOfBirth = $_POST["date_of_birth"] ?: null;
         $phoneNumber = trim($_POST["phone_number"] ?? "");
         $subjectNotes = trim($_POST["subject_notes"] ?? "");
@@ -191,8 +193,12 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         $screeningStatus = $_POST["screening_status"] ?? "screening";
         $studyNotes = trim($_POST["study_notes"] ?? "");
 
-        if ($initials === "") {
-            $error = "Subject initials are required.";
+        if ($firstName === "") {
+            $error = "First name is required.";
+        } elseif ($lastName === "") {
+            $error = "Last name is required.";
+        } elseif ($initials === "") {
+            $error = "Subject initials could not be generated.";
         } elseif (!$dateOfBirth) {
             $error = "Date of birth is required.";
         } elseif (!in_array($screeningStatus, $allowedStatuses, true)) {
@@ -204,6 +210,8 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                 $stmt = $pdo->prepare("
                     INSERT INTO subjects
                     (
+                        first_name,
+                        last_name,
                         initials,
                         date_of_birth,
                         phone_number,
@@ -211,10 +219,12 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                         created_by
                     )
                     VALUES
-                    (?, ?, ?, ?, ?)
+                    (?, ?, ?, ?, ?, ?, ?)
                 ");
 
                 $stmt->execute([
+                    $firstName,
+                    $lastName,
                     $initials,
                     $dateOfBirth,
                     $phoneNumber,
@@ -253,7 +263,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                     "created",
                     "subject",
                     $newSubjectId,
-                    "Created and linked subject " . $initials . " to study " . ($study["study_code"] ?? "")
+                    "Created and linked subject " . $firstName . " " . $lastName . " (" . $initials . ") to study " . ($study["study_code"] ?? "")
                 );
 
                 header("Location: " . BASE_URL . "/Studies/study_subjects.php?id=" . $studyId . "&created=1");
@@ -386,6 +396,8 @@ $stmt = $pdo->prepare("
         study_subjects.created_at AS linked_at,
 
         subjects.id AS subject_id,
+        subjects.first_name,
+        subjects.last_name,
         subjects.initials,
         subjects.date_of_birth,
         subjects.phone_number,
@@ -402,6 +414,8 @@ $studySubjects = $stmt->fetchAll();
 $stmt = $pdo->prepare("
     SELECT
         subjects.id,
+        subjects.first_name,
+        subjects.last_name,
         subjects.initials,
         subjects.date_of_birth,
         subjects.phone_number
@@ -411,7 +425,7 @@ $stmt = $pdo->prepare("
         FROM study_subjects
         WHERE study_id = ?
     )
-    ORDER BY subjects.initials ASC, subjects.date_of_birth ASC
+    ORDER BY subjects.last_name ASC, subjects.first_name ASC, subjects.date_of_birth ASC
 ");
 $stmt->execute([$studyId]);
 $availableSubjects = $stmt->fetchAll();
@@ -525,6 +539,7 @@ $totalStudySubjects = count($studySubjects);
         <table>
             <thead>
                 <tr>
+                    <th>Name</th>
                     <th>Initials</th>
                     <th>DOB</th>
                     <th>Phone</th>
@@ -537,13 +552,22 @@ $totalStudySubjects = count($studySubjects);
             <tbody>
                 <?php if (count($studySubjects) === 0): ?>
                     <tr>
-                        <td colspan="7">No subjects have been linked to this study yet.</td>
+                        <td colspan="8">No subjects have been linked to this study yet.</td>
                     </tr>
                 <?php else: ?>
                     <?php foreach ($studySubjects as $studySubject): ?>
                         <?php $formId = "study-subject-form-" . (int) $studySubject["study_subject_id"]; ?>
 
                         <tr>
+                            <td>
+                                <?php
+                                    $subjectFullName = trim(
+                                        ($studySubject["first_name"] ?? "") . " " . ($studySubject["last_name"] ?? "")
+                                    );
+
+                                    echo htmlspecialchars($subjectFullName !== "" ? $subjectFullName : "N/A");
+                                ?>
+                            </td>
                             <td><?php echo htmlspecialchars($studySubject["initials"]); ?></td>
                             <td><?php echo htmlspecialchars($studySubject["date_of_birth"]); ?></td>
                             <td><?php echo htmlspecialchars($studySubject["phone_number"] ?? ""); ?></td>
@@ -625,8 +649,13 @@ $totalStudySubjects = count($studySubjects);
                         <?php foreach ($availableSubjects as $subject): ?>
                             <option value="<?php echo htmlspecialchars($subject["id"]); ?>">
                                 <?php
+                                    $subjectFullName = trim(($subject["first_name"] ?? "") . " " . ($subject["last_name"] ?? ""));
+
                                     echo htmlspecialchars(
+                                        ($subjectFullName !== "" ? $subjectFullName : "Unnamed Subject") .
+                                        " (" .
                                         $subject["initials"] .
+                                        ")" .
                                         " | DOB: " .
                                         $subject["date_of_birth"] .
                                         " | Phone: " .
@@ -681,13 +710,32 @@ $totalStudySubjects = count($studySubjects);
                 <input type="hidden" name="action" value="create_and_link">
 
                 <div class="form-group">
-                    <label for="initials">Initials</label>
+                    <label for="new_first_name">First Name</label>
                     <input 
                         type="text" 
-                        id="initials" 
-                        name="initials" 
-                        maxlength="20"
+                        id="new_first_name" 
+                        name="first_name" 
                         required
+                    >
+                </div>
+
+                <div class="form-group">
+                    <label for="new_last_name">Last Name</label>
+                    <input 
+                        type="text" 
+                        id="new_last_name" 
+                        name="last_name" 
+                        required
+                    >
+                </div>
+
+                <div class="form-group">
+                    <label for="new_initials_preview">Initials</label>
+                    <input 
+                        type="text" 
+                        id="new_initials_preview" 
+                        readonly
+                        placeholder="Auto-generated from first and last name"
                     >
                 </div>
 
@@ -763,6 +811,31 @@ $totalStudySubjects = count($studySubjects);
         Back to Study
     </a>
 </main>
+
+<script>
+    const newFirstNameInput = document.getElementById("new_first_name");
+    const newLastNameInput = document.getElementById("new_last_name");
+    const newInitialsPreview = document.getElementById("new_initials_preview");
+
+    function updateNewInitialsPreview() {
+        if (!newFirstNameInput || !newLastNameInput || !newInitialsPreview) {
+            return;
+        }
+
+        const firstName = newFirstNameInput.value.trim();
+        const lastName = newLastNameInput.value.trim();
+
+        const firstInitial = firstName !== "" ? firstName.charAt(0).toUpperCase() : "";
+        const lastInitial = lastName !== "" ? lastName.charAt(0).toUpperCase() : "";
+
+        newInitialsPreview.value = firstInitial + lastInitial;
+    }
+
+    if (newFirstNameInput && newLastNameInput && newInitialsPreview) {
+        newFirstNameInput.addEventListener("input", updateNewInitialsPreview);
+        newLastNameInput.addEventListener("input", updateNewInitialsPreview);
+    }
+</script>
 
 </body>
 </html>

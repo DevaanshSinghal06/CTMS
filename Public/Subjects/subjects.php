@@ -21,12 +21,18 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         exit("Invalid or expired request token.");
     }
 
-    $initials = strtoupper(trim($_POST["initials"] ?? ""));
+    $firstName = trim($_POST["first_name"] ?? "");
+    $lastName = trim($_POST["last_name"] ?? "");
+    $initials = generate_subject_initials($firstName, $lastName);
     $dateOfBirth = $_POST["date_of_birth"] ?: null;
     $phoneNumber = trim($_POST["phone_number"] ?? "");
     $notes = trim($_POST["notes"] ?? "");
 
-    if ($initials === "") {
+    if ($firstName === "") {
+        $error = "First name is required.";
+    } elseif ($lastName === "") {
+        $error = "Last name is required.";
+    } elseif ($initials === "") {
         $error = "Subject initials are required.";
     } elseif (!$dateOfBirth) {
         $error = "Date of birth is required.";
@@ -34,6 +40,8 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         $stmt = $pdo->prepare("
             INSERT INTO subjects
             (
+                first_name,
+                last_name,
                 initials,
                 date_of_birth,
                 phone_number,
@@ -41,10 +49,12 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                 created_by
             )
             VALUES
-            (?, ?, ?, ?, ?)
+            (?, ?, ?, ?, ?, ?, ?)
         ");
 
         $stmt->execute([
+            $firstName,
+            $lastName,
             $initials,
             $dateOfBirth,
             $phoneNumber,
@@ -58,7 +68,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             "created",
             "subject",
             $newSubjectId,
-            "Created subject profile: " . $initials
+            "Created subject profile: " . $firstName . " " . $lastName . " (" . $initials . ")"
         );
 
         header("Location: " . BASE_URL . "/Subjects/subjects.php?created=1");
@@ -73,6 +83,8 @@ if (isset($_GET["created"])) {
 $stmt = $pdo->query("
     SELECT
         subjects.id,
+        subjects.first_name,
+        subjects.last_name,
         subjects.initials,
         subjects.date_of_birth,
         subjects.phone_number,
@@ -84,6 +96,8 @@ $stmt = $pdo->query("
         ON subjects.id = study_subjects.subject_id
     GROUP BY
         subjects.id,
+        subjects.first_name,
+        subjects.last_name,
         subjects.initials,
         subjects.date_of_birth,
         subjects.phone_number,
@@ -152,6 +166,7 @@ $subjects = $stmt->fetchAll();
         <table>
             <thead>
                 <tr>
+                    <th>Name</th>
                     <th>Initials</th>
                     <th>DOB</th>
                     <th>Phone</th>
@@ -163,11 +178,17 @@ $subjects = $stmt->fetchAll();
             <tbody>
                 <?php if (count($subjects) === 0): ?>
                     <tr>
-                        <td colspan="6">No subject profiles have been created yet.</td>
+                        <td colspan="7">No subject profiles have been created yet.</td>
                     </tr>
                 <?php else: ?>
                     <?php foreach ($subjects as $subject): ?>
                         <tr>
+                            <td>
+                                <?php
+                                    $fullName = trim(($subject["first_name"] ?? "") . " " . ($subject["last_name"] ?? ""));
+                                    echo htmlspecialchars($fullName !== "" ? $fullName : "N/A");
+                                ?>
+                            </td>
                             <td><?php echo htmlspecialchars($subject["initials"]); ?></td>
                             <td><?php echo htmlspecialchars($subject["date_of_birth"]); ?></td>
                             <td><?php echo htmlspecialchars($subject["phone_number"] ?? ""); ?></td>
@@ -194,13 +215,32 @@ $subjects = $stmt->fetchAll();
             <?php echo csrf_field(); ?>
 
             <div class="form-group">
-                <label for="initials">Initials</label>
+                <label for="first_name">First Name</label>
                 <input 
                     type="text" 
-                    id="initials" 
-                    name="initials" 
-                    maxlength="20"
+                    id="first_name" 
+                    name="first_name" 
                     required
+                >
+            </div>
+
+            <div class="form-group">
+                <label for="last_name">Last Name</label>
+                <input 
+                    type="text" 
+                    id="last_name" 
+                    name="last_name" 
+                    required
+                >
+            </div>
+
+            <div class="form-group">
+                <label for="initials_preview">Initials</label>
+                <input 
+                    type="text" 
+                    id="initials_preview" 
+                    readonly
+                    placeholder="Auto-generated from first and last name"
                 >
             </div>
 
@@ -238,6 +278,25 @@ $subjects = $stmt->fetchAll();
         </form>
     </section>
 </main>
+
+<script>
+    const firstNameInput = document.getElementById("first_name");
+    const lastNameInput = document.getElementById("last_name");
+    const initialsPreview = document.getElementById("initials_preview");
+
+    function updateInitialsPreview() {
+        const firstName = firstNameInput.value.trim();
+        const lastName = lastNameInput.value.trim();
+
+        const firstInitial = firstName !== "" ? firstName.charAt(0).toUpperCase() : "";
+        const lastInitial = lastName !== "" ? lastName.charAt(0).toUpperCase() : "";
+
+        initialsPreview.value = firstInitial + lastInitial;
+    }
+
+    firstNameInput.addEventListener("input", updateInitialsPreview);
+    lastNameInput.addEventListener("input", updateInitialsPreview);
+</script>
 
 </body>
 </html>
