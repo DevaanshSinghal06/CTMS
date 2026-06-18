@@ -65,6 +65,11 @@ $statusLabels = [
 ];
 
 $allowedStatuses = array_keys($statusLabels);
+$activeSubjectStatuses = [
+    "screening",
+    "randomization",
+    "enrolled"
+];
 
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
     if (!verify_csrf()) {
@@ -113,37 +118,64 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                     $error = "This subject is already linked to this study.";
                 } else {
                     $stmt = $pdo->prepare("
-                        INSERT INTO study_subjects
-                        (
-                            study_id,
-                            subject_id,
-                            referral_source,
-                            screening_status,
-                            notes,
-                            created_by
-                        )
-                        VALUES
-                        (?, ?, ?, ?, ?, ?)
+                        SELECT
+                            studies.study_code,
+                            studies.study_name,
+                            study_subjects.screening_status
+                        FROM study_subjects
+                        INNER JOIN studies
+                            ON study_subjects.study_id = studies.id
+                        WHERE study_subjects.subject_id = ?
+                            AND study_subjects.study_id != ?
+                            AND study_subjects.screening_status IN ('screening', 'randomization', 'enrolled')
+                        LIMIT 1
                     ");
+                    $stmt->execute([$subjectId, $studyId]);
+                    $activeStudyConflict = $stmt->fetch();
 
-                    $stmt->execute([
-                        $studyId,
-                        $subjectId,
-                        $referralSource,
-                        $screeningStatus,
-                        $notes,
-                        $currentUserId
-                    ]);
+                    if ($activeStudyConflict) {
+                        $conflictStatus = $statusLabels[$activeStudyConflict["screening_status"]]
+                            ?? $activeStudyConflict["screening_status"];
 
-                    log_action(
-                        "linked",
-                        "subject",
-                        $subjectId,
-                        "Linked subject " . ($subject["initials"] ?? "") . " to study " . ($study["study_code"] ?? "")
-                    );
+                        $error = "This subject is already active in another study: "
+                            . ($activeStudyConflict["study_code"] ?? "")
+                            . " - "
+                            . ($activeStudyConflict["study_name"] ?? "")
+                            . " (" . $conflictStatus . "). The subject must be completed, withdrawn, or screen failed before entering another study.";
+                    } else {
+                        $stmt = $pdo->prepare("
+                            INSERT INTO study_subjects
+                            (
+                                study_id,
+                                subject_id,
+                                referral_source,
+                                screening_status,
+                                notes,
+                                created_by
+                            )
+                            VALUES
+                            (?, ?, ?, ?, ?, ?)
+                        ");
 
-                    header("Location: " . BASE_URL . "/Studies/study_subjects.php?id=" . $studyId . "&linked=1");
-                    exit;
+                        $stmt->execute([
+                            $studyId,
+                            $subjectId,
+                            $referralSource,
+                            $screeningStatus,
+                            $notes,
+                            $currentUserId
+                        ]);
+
+                        log_action(
+                            "linked",
+                            "subject",
+                            $subjectId,
+                            "Linked subject " . ($subject["initials"] ?? "") . " to study " . ($study["study_code"] ?? "")
+                        );
+
+                        header("Location: " . BASE_URL . "/Studies/study_subjects.php?id=" . $studyId . "&linked=1");
+                        exit;
+                    }
                 }
             }
         }
@@ -267,33 +299,67 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             } else {
                 $oldStatus = $studySubject["screening_status"];
 
-                $stmt = $pdo->prepare("
-                    UPDATE study_subjects
-                    SET
-                        referral_source = ?,
-                        screening_status = ?,
-                        notes = ?
-                    WHERE id = ?
-                        AND study_id = ?
-                ");
+                $activeStudyConflict = null;
 
-                $stmt->execute([
-                    $referralSource,
-                    $screeningStatus,
-                    $notes,
-                    $studySubjectId,
-                    $studyId
-                ]);
+                if (in_array($screeningStatus, $activeSubjectStatuses, true)) {
+                    $stmt = $pdo->prepare("
+                        SELECT
+                            studies.study_code,
+                            studies.study_name,
+                            study_subjects.screening_status
+                        FROM study_subjects
+                        INNER JOIN studies
+                            ON study_subjects.study_id = studies.id
+                        WHERE study_subjects.subject_id = ?
+                            AND study_subjects.id != ?
+                            AND study_subjects.screening_status IN ('screening', 'randomization', 'enrolled')
+                        LIMIT 1
+                    ");
+                    $stmt->execute([
+                        (int) $studySubject["subject_id"],
+                        $studySubjectId
+                    ]);
+                    $activeStudyConflict = $stmt->fetch();
+                }
 
-                log_action(
-                    "updated",
-                    "subject",
-                    (int) $studySubject["subject_id"],
-                    "Updated subject " . ($studySubject["initials"] ?? "") . " status for study " . ($study["study_code"] ?? "") . " from " . ($statusLabels[$oldStatus] ?? $oldStatus) . " to " . ($statusLabels[$screeningStatus] ?? $screeningStatus)
-                );
+                if ($activeStudyConflict) {
+                    $conflictStatus = $statusLabels[$activeStudyConflict["screening_status"]]
+                        ?? $activeStudyConflict["screening_status"];
 
-                header("Location: " . BASE_URL . "/Studies/study_subjects.php?id=" . $studyId . "&updated=1");
-                exit;
+                    $error = "This subject is already active in another study: "
+                        . ($activeStudyConflict["study_code"] ?? "")
+                        . " - "
+                        . ($activeStudyConflict["study_name"] ?? "")
+                        . " (" . $conflictStatus . "). The subject must be completed, withdrawn, or screen failed before becoming active in another study.";
+                } else {
+                    $stmt = $pdo->prepare("
+                        UPDATE study_subjects
+                        SET
+                            referral_source = ?,
+                            screening_status = ?,
+                            notes = ?
+                        WHERE id = ?
+                            AND study_id = ?
+                    ");
+
+                    $stmt->execute([
+                        $referralSource,
+                        $screeningStatus,
+                        $notes,
+                        $studySubjectId,
+                        $studyId
+                    ]);
+
+                    log_action(
+                        "updated",
+                        "subject",
+                        (int) $studySubject["subject_id"],
+                        "Updated subject " . ($studySubject["initials"] ?? "") . " status for study " . ($study["study_code"] ?? "") . " from " . ($statusLabels[$oldStatus] ?? $oldStatus) . " to " . ($statusLabels[$screeningStatus] ?? $screeningStatus)
+                    );
+
+                    header("Location: " . BASE_URL . "/Studies/study_subjects.php?id=" . $studyId . "&updated=1");
+                    exit;
+                }
             }
         }
     }
