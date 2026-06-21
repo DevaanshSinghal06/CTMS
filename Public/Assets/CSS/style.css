@@ -334,3 +334,18 @@ th {
 td {
     vertical-align: middle;
 }
+
+.table-card.table-scroll {
+    overflow-x: auto;
+    overflow-y: hidden;
+    max-width: 100%;
+}
+
+.table-card.table-scroll table {
+    min-width: 1700px;
+}
+
+.table-card.table-scroll th,
+.table-card.table-scroll td {
+    white-space: nowrap;
+}

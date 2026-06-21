@@ -106,11 +106,11 @@ $subjectCount = $subjectCountRow["total"] ?? 0;
             <p>View reusable subject profiles linked across studies.</p>
         </a>
 
-        <div class="card">
+        <a href="<?php echo BASE_URL; ?>/Reports/enrollment_rates.php" class="card card-link">
             <h3>Reports</h3>
-            <div class="stat-number">0</div>
-            <p>Generate operational reports.</p>
-        </div>
+            <div class="stat-number">1</div>
+            <p>View enrollment rates for assigned studies.</p>
+        </a>
 
         <a href="<?php echo BASE_URL; ?>/Users/users.php" class="card card-link">
             <h3>Users</h3>

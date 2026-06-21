@@ -93,6 +93,12 @@ $screeningCount = $screeningCountRow["total"] ?? 0;
             <div class="stat-number">0</div>
             <p>Coordinator tasks that still need to be completed.</p>
         </div>
+
+        <a href="<?php echo BASE_URL; ?>/Reports/enrollment_rates.php" class="card card-link">
+            <h3>Reports</h3>
+            <div class="stat-number">1</div>
+            <p>View enrollment rates for assigned studies.</p>
+        </a>
     </section>
 
     <div class="table-card">
