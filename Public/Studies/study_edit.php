@@ -56,6 +56,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
     $studyName = trim($_POST["study_name"] ?? "");
     $protocolNumber = trim($_POST["protocol_number"] ?? "");
+    $drugName = trim($_POST["drug_name"] ?? "");
     $sponsor = trim($_POST["sponsor"] ?? "");
     $croName = trim($_POST["cro_name"] ?? "");
     $principalInvestigator = trim($_POST["principal_investigator"] ?? "");
@@ -99,6 +100,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             SET
                 study_name = ?,
                 protocol_number = ?,
+                drug_name = ?,
                 sponsor = ?,
                 cro_name = ?,
                 principal_investigator = ?,
@@ -120,6 +122,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         $stmt->execute([
             $studyName,
             $protocolNumber,
+            $drugName,
             $sponsor,
             $croName,
             $principalInvestigator,
@@ -228,6 +231,16 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                     id="protocol_number" 
                     name="protocol_number"
                     value="<?php echo htmlspecialchars($study["protocol_number"] ?? ""); ?>"
+                >
+            </div>
+
+            <div class="form-group">
+                <label for="drug_name">Drug Name</label>
+                <input 
+                    type="text" 
+                    id="drug_name" 
+                    name="drug_name"
+                    value="<?php echo htmlspecialchars($study["drug_name"] ?? ""); ?>"
                 >
             </div>
 

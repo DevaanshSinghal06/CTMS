@@ -25,6 +25,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         $studyCode = generate_study_code($pdo);
         $studyName = trim($_POST["study_name"] ?? "");
         $protocolNumber = trim($_POST["protocol_number"] ?? "");
+        $drugName = trim($_POST["drug_name"] ?? "");
         $sponsor = trim($_POST["sponsor"] ?? "");
         $croName = trim($_POST["cro_name"] ?? "");
         $principalInvestigator = trim($_POST["principal_investigator"] ?? "");
@@ -47,6 +48,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                     study_code,
                     study_name,
                     protocol_number,
+                    drug_name,
                     sponsor,
                     cro_name,
                     principal_investigator,
@@ -57,13 +59,14 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                     created_by
                 )
                 VALUES
-                (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ");
 
             $stmt->execute([
                 $studyCode,
                 $studyName,
                 $protocolNumber,
+                $drugName,
                 $sponsor,
                 $croName,
                 $principalInvestigator,
@@ -112,6 +115,7 @@ if ($isAdmin) {
             study_code,
             study_name,
             protocol_number,
+            drug_name,
             sponsor,
             cro_name,
             principal_investigator,
@@ -132,6 +136,7 @@ if ($isAdmin) {
             studies.study_code,
             studies.study_name,
             studies.protocol_number,
+            studies.drug_name
             studies.sponsor,
             studies.cro_name,
             studies.principal_investigator,
@@ -213,6 +218,7 @@ if ($isAdmin) {
                     <th>Code</th>
                     <th>Study Name</th>
                     <th>Protocol</th>
+                    <th>Drug</th>
                     <th>Sponsor</th>
                     <th>CRO</th>
                     <th>PI</th>
@@ -224,7 +230,7 @@ if ($isAdmin) {
             <tbody>
                 <?php if (count($studies) === 0): ?>
                     <tr>
-                        <td colspan="9">No active studies have been created yet.</td>
+                        <td colspan="10">No active studies have been created yet.</td>
                     </tr>
                 <?php else: ?>
                     <?php foreach ($studies as $study): ?>
@@ -232,6 +238,7 @@ if ($isAdmin) {
                             <td><?php echo htmlspecialchars($study["study_code"] ?? ""); ?></td>
                             <td><?php echo htmlspecialchars($study["study_name"]); ?></td>
                             <td><?php echo htmlspecialchars($study["protocol_number"] ?? ""); ?></td>
+                            <td><?php echo htmlspecialchars($study["drug_name"] ?? ""); ?></td>
                             <td><?php echo htmlspecialchars($study["sponsor"] ?? ""); ?></td>
                             <td><?php echo htmlspecialchars($study["cro_name"] ?? ""); ?></td>
                             <td><?php echo htmlspecialchars($study["principal_investigator"] ?? ""); ?></td>
@@ -307,6 +314,15 @@ if ($isAdmin) {
                         type="text" 
                         id="protocol_number" 
                         name="protocol_number"
+                    >
+                </div>
+
+                <div class="form-group">
+                    <label for="drug_name">Drug Name</label>
+                    <input 
+                        type="text" 
+                        id="drug_name" 
+                        name="drug_name"
                     >
                 </div>
 

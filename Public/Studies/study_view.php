@@ -150,8 +150,13 @@ if ($study["competitive_enrollment"] !== null) {
         <h1><?php echo htmlspecialchars($study["study_name"]); ?></h1>
         <p>
             <?php echo htmlspecialchars($study["study_code"] ?? ""); ?>
+
             <?php if (!empty($study["protocol_number"])): ?>
                 | Protocol: <?php echo htmlspecialchars($study["protocol_number"]); ?>
+            <?php endif; ?>
+
+            <?php if (!empty($study["drug_name"])): ?>
+                | Drug: <?php echo htmlspecialchars($study["drug_name"]); ?>
             <?php endif; ?>
         </p>
     </section>
@@ -207,6 +212,10 @@ if ($study["competitive_enrollment"] !== null) {
                 <tr>
                     <th>Protocol Number</th>
                     <td><?php echo htmlspecialchars($study["protocol_number"] ?? ""); ?></td>
+                </tr>
+                <tr>
+                    <th>Drug Name</th>
+                    <td><?php echo htmlspecialchars($study["drug_name"] ?? ""); ?></td>
                 </tr>
                 <tr>
                     <th>Sponsor</th>

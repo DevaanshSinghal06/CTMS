@@ -19,6 +19,7 @@ if ($isAdmin) {
             studies.study_code,
             studies.study_name,
             studies.protocol_number,
+            studies.drug_name,
             studies.sponsor,
             studies.status,
             studies.site_enrollment_target,
@@ -39,6 +40,7 @@ if ($isAdmin) {
             studies.study_code,
             studies.study_name,
             studies.protocol_number,
+            studies.drug_name,
             studies.sponsor,
             studies.status,
             studies.site_enrollment_target,
@@ -52,6 +54,7 @@ if ($isAdmin) {
             studies.study_code,
             studies.study_name,
             studies.protocol_number,
+            studies.drug_name,
             studies.sponsor,
             studies.status,
             studies.site_enrollment_target,
@@ -75,6 +78,7 @@ if ($isAdmin) {
             studies.study_code,
             studies.study_name,
             studies.protocol_number,
+            studies.drug_name,
             studies.sponsor,
             studies.status,
             studies.site_enrollment_target,
@@ -149,6 +153,7 @@ function format_count($value): int
                 <tr>
                     <th>Study</th>
                     <th>Protocol</th>
+                    <th>Drug</th>
                     <th>Sponsor</th>
                     <th>Status</th>
                     <th>Screening</th>
@@ -166,7 +171,7 @@ function format_count($value): int
             <tbody>
                 <?php if (count($reports) === 0): ?>
                     <tr>
-                        <td colspan="14">No studies found for this report.</td>
+                        <td colspan="15">No studies found for this report.</td>
                     </tr>
                 <?php else: ?>
                     <?php foreach ($reports as $report): ?>
@@ -187,6 +192,7 @@ function format_count($value): int
                                 <?php echo htmlspecialchars($report["study_name"] ?? ""); ?>
                             </td>
                             <td><?php echo htmlspecialchars($report["protocol_number"] ?? ""); ?></td>
+                            <td><?php echo htmlspecialchars($report["drug_name"] ?? ""); ?></td>
                             <td><?php echo htmlspecialchars($report["sponsor"] ?? ""); ?></td>
                             <td><?php echo htmlspecialchars($statusLabel); ?></td>
                             <td><?php echo htmlspecialchars(format_count($report["screening_count"] ?? 0)); ?></td>

@@ -30,6 +30,7 @@ $stmt = $pdo->query("
         study_code,
         study_name,
         protocol_number,
+        drug_name,
         sponsor,
         cro_name,
         principal_investigator,
@@ -91,6 +92,7 @@ $studies = $stmt->fetchAll();
                     <th>Code</th>
                     <th>Study Name</th>
                     <th>Protocol</th>
+                    <th>Drug</th>
                     <th>Sponsor</th>
                     <th>CRO</th>
                     <th>PI</th>
@@ -101,7 +103,7 @@ $studies = $stmt->fetchAll();
             <tbody>
                 <?php if (count($studies) === 0): ?>
                     <tr>
-                        <td colspan="8">No archived studies found.</td>
+                        <td colspan="9">No archived studies found.</td>
                     </tr>
                 <?php else: ?>
                     <?php foreach ($studies as $study): ?>
@@ -109,6 +111,7 @@ $studies = $stmt->fetchAll();
                             <td><?php echo htmlspecialchars($study["study_code"] ?? ""); ?></td>
                             <td><?php echo htmlspecialchars($study["study_name"]); ?></td>
                             <td><?php echo htmlspecialchars($study["protocol_number"] ?? ""); ?></td>
+                            <td><?php echo htmlspecialchars($study["drug_name"] ?? ""); ?></td>
                             <td><?php echo htmlspecialchars($study["sponsor"] ?? ""); ?></td>
                             <td><?php echo htmlspecialchars($study["cro_name"] ?? ""); ?></td>
                             <td><?php echo htmlspecialchars($study["principal_investigator"] ?? ""); ?></td>
