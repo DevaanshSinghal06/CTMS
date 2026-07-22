@@ -95,6 +95,54 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     } else {
         $finalStatus = $isArchived ? "archived" : $status;
 
+        $newStudyValues = [
+            "study_name" => $studyName,
+            "protocol_number" => $protocolNumber,
+            "drug_name" => $drugName,
+            "sponsor" => $sponsor,
+            "cro_name" => $croName,
+            "principal_investigator" => $principalInvestigator,
+            "status" => $finalStatus,
+            "start_date" => $startDate,
+            "end_date" => $endDate,
+            "fpfv_date" => $fpfvDate,
+            "lpfv_date" => $lpfvDate,
+            "lplv_date" => $lplvDate,
+            "enrollment_closing_date" => $enrollmentClosingDate,
+            "study_termination_date" => $studyTerminationDate,
+            "competitive_enrollment" => $competitiveEnrollment,
+            "budgeted_enrollment_number" => $budgetedEnrollmentNumber,
+            "site_enrollment_target" => $siteEnrollmentTarget,
+            "notes" => $notes
+        ];
+
+        $studyFieldLabels = [
+            "study_name" => "Study Name",
+            "protocol_number" => "Protocol Number",
+            "drug_name" => "Drug Name",
+            "sponsor" => "Sponsor",
+            "cro_name" => "CRO Name",
+            "principal_investigator" => "Principal Investigator",
+            "status" => "Status",
+            "start_date" => "Start Date",
+            "end_date" => "End Date",
+            "fpfv_date" => "FPFV Date",
+            "lpfv_date" => "LPFV Date",
+            "lplv_date" => "LPLV Date",
+            "enrollment_closing_date" => "Enrollment Closing Date",
+            "study_termination_date" => "Study Termination Date",
+            "competitive_enrollment" => "Competitive Enrollment",
+            "budgeted_enrollment_number" => "Budgeted Enrollment Number",
+            "site_enrollment_target" => "Internal Site Target",
+            "notes" => "Notes"
+        ];
+
+        $changeSummary = build_changed_fields_summary(
+            $study,
+            $newStudyValues,
+            $studyFieldLabels
+        );
+
         $stmt = $pdo->prepare("
             UPDATE studies
             SET
@@ -126,7 +174,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             $sponsor,
             $croName,
             $principalInvestigator,
-            $status,
+            $finalStatus,
             $startDate,
             $endDate,
             $fpfvDate,
@@ -143,11 +191,15 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
         $studyCodeForLog = $study["study_code"] ?? "No Code";
 
+        $auditDescription = $changeSummary !== ""
+            ? "Updated study " . $studyCodeForLog . ": " . $changeSummary
+            : "Updated study " . $studyCodeForLog . ": no field changes detected";
+
         log_action(
             "updated",
             "study",
             $studyId,
-            "Updated study " . $studyCodeForLog . ": " . $studyName
+            $auditDescription
         );
 
         if ($finalStatus === "archived") {
@@ -203,6 +255,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     <section class="card">
         <form method="POST" action="<?php echo BASE_URL; ?>/Studies/study_edit.php?id=<?php echo htmlspecialchars($studyId); ?>">
             <?php echo csrf_field(); ?>
+
             <div class="form-group">
                 <label for="study_code">Internal Study Code</label>
                 <input 

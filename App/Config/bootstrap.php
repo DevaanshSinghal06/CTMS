@@ -9,3 +9,4 @@ require_once ROOT_PATH . "/App/Helpers/audit.php";
 require_once ROOT_PATH . "/App/Helpers/study_code.php";
 require_once ROOT_PATH . "/App/Helpers/csrf.php";
 require_once ROOT_PATH . "/App/Helpers/subject_initials.php";
+require_once ROOT_PATH . "/App/Helpers/audit_descriptions.php";
