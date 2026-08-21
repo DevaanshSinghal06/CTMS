@@ -287,6 +287,15 @@ if ($study["competitive_enrollment"] !== null) {
             <p>Link subjects to this study and update screening/enrollment status.</p>
         </a>
 
+        <a 
+            href="<?php echo BASE_URL; ?>/Studies/study_visit_template.php?id=<?php echo htmlspecialchars($study["id"]); ?>" 
+            class="card card-link"
+        >
+            <h3>Visit Template</h3>
+            <div class="stat-number">Open</div>
+            <p>Review study arms, visits, procedures, timing, and budgeted amounts.</p>
+        </a>
+
         <div class="card">
             <h3>Contacts</h3>
             <div class="stat-number">0</div>
