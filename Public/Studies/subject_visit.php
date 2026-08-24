@@ -14,6 +14,8 @@ $portalLabel = $isAdmin
     ? "Admin Portal"
     : "Research Coordinator Portal";
 
+$error = "";
+
 $subjectVisitId = $_GET["id"] ?? null;
 
 if (!$subjectVisitId || !is_numeric($subjectVisitId)) {
@@ -112,6 +114,219 @@ if (!$isAdmin) {
 }
 
 // ---------------------------------------------------------
+// Subject display name
+// ---------------------------------------------------------
+
+$subjectName = trim(
+    ($visit["first_name"] ?? "")
+    . " "
+    . ($visit["last_name"] ?? "")
+);
+
+if ($subjectName === "") {
+    $subjectName = $visit["initials"] ?? "Unknown Subject";
+}
+
+// ---------------------------------------------------------
+// Save procedure progress
+// ---------------------------------------------------------
+
+$allowedProcedureStatuses = [
+    "pending",
+    "done",
+    "not_done",
+    "not_applicable"
+];
+
+if ($_SERVER["REQUEST_METHOD"] === "POST") {
+    if (!verify_csrf()) {
+        http_response_code(400);
+        exit("Invalid or expired request token.");
+    }
+
+    $action = $_POST["action"] ?? "";
+
+    if ($action === "save_progress") {
+        if ($visit["status"] !== "open") {
+            $error = "Submitted visits cannot be edited.";
+        } else {
+            $postedStatuses =
+                $_POST["procedure_status"] ?? [];
+
+            // Load the current procedure rows from the database.
+            $stmt = $pdo->prepare("
+                SELECT
+                    id,
+                    status,
+                    completed_by,
+                    completed_at
+                FROM subject_visit_procedures
+                WHERE subject_visit_id = ?
+                ORDER BY id
+            ");
+
+            $stmt->execute([$subjectVisitId]);
+            $currentProcedures = $stmt->fetchAll();
+
+            $updates = [];
+
+            foreach ($currentProcedures as $currentProcedure) {
+                $procedureId =
+                    (int) $currentProcedure["id"];
+
+                $newStatus =
+                    $postedStatuses[$procedureId]
+                    ?? $currentProcedure["status"];
+
+                if (
+                    !in_array(
+                        $newStatus,
+                        $allowedProcedureStatuses,
+                        true
+                    )
+                ) {
+                    $error = "Invalid procedure status.";
+                    break;
+                }
+
+                $updates[] = [
+                    "id" => $procedureId,
+                    "old_status" =>
+                        $currentProcedure["status"],
+                    "new_status" =>
+                        $newStatus,
+                    "completed_by" =>
+                        $currentProcedure["completed_by"],
+                    "completed_at" =>
+                        $currentProcedure["completed_at"]
+                ];
+            }
+
+            if ($error === "") {
+                try {
+                    $pdo->beginTransaction();
+
+                    $updateStmt = $pdo->prepare("
+                        UPDATE subject_visit_procedures
+                        SET
+                            status = ?,
+                            completed_by = ?,
+                            completed_at = ?
+                        WHERE id = ?
+                            AND subject_visit_id = ?
+                    ");
+
+                    $changedCount = 0;
+
+                    $summaryCounts = [
+                        "pending" => 0,
+                        "done" => 0,
+                        "not_done" => 0,
+                        "not_applicable" => 0
+                    ];
+
+                    $completedTimestamp =
+                        date("Y-m-d H:i:s");
+
+                    foreach ($updates as $update) {
+                        $newStatus =
+                            $update["new_status"];
+
+                        $summaryCounts[$newStatus]++;
+
+                        if (
+                            $update["old_status"]
+                            !== $newStatus
+                        ) {
+                            $changedCount++;
+                        }
+
+                        if ($newStatus === "done") {
+                            // Preserve the original completion
+                            // information if it was already Done.
+                            if (
+                                $update["old_status"] === "done"
+                                && $update["completed_at"] !== null
+                            ) {
+                                $completedBy =
+                                    $update["completed_by"];
+
+                                $completedAt =
+                                    $update["completed_at"];
+                            } else {
+                                $completedBy =
+                                    $currentUserId;
+
+                                $completedAt =
+                                    $completedTimestamp;
+                            }
+                        } else {
+                            // If it is no longer Done, clear the
+                            // completion metadata.
+                            $completedBy = null;
+                            $completedAt = null;
+                        }
+
+                        $updateStmt->execute([
+                            $newStatus,
+                            $completedBy,
+                            $completedAt,
+                            $update["id"],
+                            $subjectVisitId
+                        ]);
+                    }
+
+                    $pdo->commit();
+
+                    if ($changedCount > 0) {
+                        log_action(
+                            "updated",
+                            "subject_visit",
+                            $subjectVisitId,
+                            "Updated "
+                            . $visit["visit_name_snapshot"]
+                            . " progress for "
+                            . $subjectName
+                            . " in "
+                            . $visit["study_code"]
+                            . ": "
+                            . $changedCount
+                            . " procedure status changes; "
+                            . $summaryCounts["done"]
+                            . " Done, "
+                            . $summaryCounts["not_done"]
+                            . " Not Done, "
+                            . $summaryCounts["not_applicable"]
+                            . " Not Applicable, "
+                            . $summaryCounts["pending"]
+                            . " Pending"
+                        );
+                    }
+
+                    header(
+                        "Location: "
+                        . BASE_URL
+                        . "/Studies/subject_visit.php?id="
+                        . $subjectVisitId
+                        . "&saved=1"
+                    );
+                    exit;
+
+                } catch (Throwable $e) {
+                    if ($pdo->inTransaction()) {
+                        $pdo->rollBack();
+                    }
+
+                    $error =
+                        "Visit progress could not be saved. "
+                        . "No procedure changes were saved.";
+                }
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------
 // Load actual visit procedures
 // ---------------------------------------------------------
 
@@ -167,26 +382,9 @@ foreach ($procedures as $procedure) {
 // Display helpers
 // ---------------------------------------------------------
 
-$subjectName = trim(
-    ($visit["first_name"] ?? "")
-    . " "
-    . ($visit["last_name"] ?? "")
-);
-
-if ($subjectName === "") {
-    $subjectName = $visit["initials"] ?? "Unknown Subject";
-}
-
 $visitStatusLabels = [
     "open" => "Open",
     "submitted" => "Submitted"
-];
-
-$procedureStatusLabels = [
-    "pending" => "Pending",
-    "done" => "Done",
-    "not_done" => "Not Done",
-    "not_applicable" => "Not Applicable"
 ];
 
 $visitStatusLabel =
@@ -269,6 +467,18 @@ $visitStatusLabel =
             <?php echo htmlspecialchars($visit["study_name"]); ?>
         </p>
     </section>
+
+    <?php if (isset($_GET["saved"])): ?>
+        <div class="alert alert-success">
+            Visit progress saved successfully.
+        </div>
+    <?php endif; ?>
+
+    <?php if ($error !== ""): ?>
+        <div class="alert alert-danger">
+            <?php echo htmlspecialchars($error); ?>
+        </div>
+    <?php endif; ?>
 
     <section class="card" style="margin-bottom: 28px;">
         <a
@@ -354,9 +564,7 @@ $visitStatusLabel =
                 <tr>
                     <th>Occurrence</th>
                     <td>
-                        <?php
-                        echo (int) $visit["occurrence_number"];
-                        ?>
+                        <?php echo (int) $visit["occurrence_number"]; ?>
                     </td>
                 </tr>
 
@@ -444,85 +652,119 @@ $visitStatusLabel =
 
         <?php else: ?>
 
-            <div class="table-card">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Procedure</th>
-                            <th>Required</th>
-                            <th>Budgeted Amount</th>
-                            <th>Status</th>
-                        </tr>
-                    </thead>
+            <form
+                method="POST"
+                action="<?php echo BASE_URL; ?>/Studies/subject_visit.php?id=<?php echo $subjectVisitId; ?>"
+            >
+                <?php echo csrf_field(); ?>
 
-                    <tbody>
-                        <?php foreach ($procedures as $procedure): ?>
-                            <?php
-                            $procedureStatus =
-                                $procedureStatusLabels[
-                                    $procedure["status"]
-                                ]
-                                ?? ucwords(
-                                    str_replace(
-                                        "_",
-                                        " ",
-                                        $procedure["status"]
-                                    )
-                                );
-                            ?>
+                <input
+                    type="hidden"
+                    name="action"
+                    value="save_progress"
+                >
 
+                <div class="table-card">
+                    <table>
+                        <thead>
                             <tr>
-                                <td>
-                                    <?php
-                                    echo htmlspecialchars(
-                                        $procedure[
-                                            "procedure_name_snapshot"
-                                        ]
-                                    );
-                                    ?>
-                                </td>
+                                <th>Procedure</th>
+                                <th>Required</th>
+                                <th>Budgeted Amount</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
 
-                                <td>
-                                    <?php
-                                    echo (int) $procedure["required_snapshot"] === 1
-                                        ? "Yes"
-                                        : "No";
-                                    ?>
-                                </td>
-
-                                <td>
-                                    <?php
-                                    if (
-                                        $procedure[
-                                            "budgeted_amount_snapshot"
-                                        ] === null
-                                    ):
-                                    ?>
-                                        —
-                                    <?php else: ?>
-                                        $<?php
-                                        echo number_format(
-                                            (float) $procedure[
-                                                "budgeted_amount_snapshot"
-                                            ],
-                                            2
+                        <tbody>
+                            <?php foreach ($procedures as $procedure): ?>
+                                <tr>
+                                    <td>
+                                        <?php
+                                        echo htmlspecialchars(
+                                            $procedure[
+                                                "procedure_name_snapshot"
+                                            ]
                                         );
                                         ?>
-                                    <?php endif; ?>
-                                </td>
+                                    </td>
 
-                                <td>
-                                    <?php
-                                    echo htmlspecialchars(
-                                        $procedureStatus
-                                    ); 
-                                    ?>
-                                </td>
-                            </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
-            </div>
+                                    <td>
+                                        <?php
+                                        echo (int) $procedure["required_snapshot"] === 1
+                                            ? "Yes"
+                                            : "No";
+                                        ?>
+                                    </td>
+
+                                    <td>
+                                        <?php
+                                        if (
+                                            $procedure[
+                                                "budgeted_amount_snapshot"
+                                            ] === null
+                                        ):
+                                        ?>
+                                            —
+                                        <?php else: ?>
+                                            $<?php
+                                            echo number_format(
+                                                (float) $procedure[
+                                                    "budgeted_amount_snapshot"
+                                                ],
+                                                2
+                                            );
+                                            ?>
+                                        <?php endif; ?>
+                                    </td>
+
+                                    <td>
+                                        <select
+                                            name="procedure_status[<?php echo (int) $procedure["id"]; ?>]"
+                                        >
+                                            <option
+                                                value="pending"
+                                                <?php echo $procedure["status"] === "pending" ? "selected" : ""; ?>
+                                            >
+                                                Pending
+                                            </option>
+
+                                            <option
+                                                value="done"
+                                                <?php echo $procedure["status"] === "done" ? "selected" : ""; ?>
+                                            >
+                                                Done
+                                            </option>
+
+                                            <option
+                                                value="not_done"
+                                                <?php echo $procedure["status"] === "not_done" ? "selected" : ""; ?>
+                                            >
+                                                Not Done
+                                            </option>
+
+                                            <option
+                                                value="not_applicable"
+                                                <?php echo $procedure["status"] === "not_applicable" ? "selected" : ""; ?>
+                                            >
+                                                Not Applicable
+                                            </option>
+                                        </select>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div style="margin-top: 24px;">
+                    <button
+                        type="submit"
+                        class="btn btn-primary"
+                    >
+                        Save Progress
+                    </button>
+                </div>
+            </form>
 
         <?php endif; ?>
     </section>
