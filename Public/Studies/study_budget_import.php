@@ -59,9 +59,66 @@ if (!$isAdmin) {
     }
 }
 
+function normalize_budget_text($value): string
+{
+    $value = (string) $value;
+
+    // Remove UTF-8 BOM if present at the beginning of a CSV cell.
+    $value = preg_replace('/^\xEF\xBB\xBF/', '', $value);
+
+    return trim($value);
+}
+
+function normalize_budget_amount($value): ?float
+{
+    $value = trim((string) $value);
+
+    if (
+        $value === "" ||
+        $value === "-" ||
+        $value === "—" ||
+        strtoupper($value) === "N/A"
+    ) {
+        return null;
+    }
+
+    $isNegative = false;
+
+    if (
+        strlen($value) >= 2 &&
+        $value[0] === "(" &&
+        substr($value, -1) === ")"
+    ) {
+        $isNegative = true;
+        $value = substr($value, 1, -1);
+    }
+
+    $value = str_replace(
+        ["$", ",", " "],
+        "",
+        $value
+    );
+
+    if (!is_numeric($value)) {
+        return null;
+    }
+
+    $amount = (float) $value;
+
+    return $isNegative ? -$amount : $amount;
+}
+
 $error = "";
+$parseError = "";
+
 $parsedRows = [];
 $uploadedFileName = "";
+
+$headerRowIndex = null;
+$subtotalColumnIndex = null;
+
+$detectedVisits = [];
+$detectedProcedures = [];
 
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
     if (!verify_csrf()) {
@@ -76,11 +133,16 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     } else {
         $uploadedFileName = $_FILES["budget_file"]["name"] ?? "";
         $temporaryPath = $_FILES["budget_file"]["tmp_name"] ?? "";
+        $fileSize = (int) ($_FILES["budget_file"]["size"] ?? 0);
 
-        $extension = strtolower(pathinfo($uploadedFileName, PATHINFO_EXTENSION));
+        $extension = strtolower(
+            pathinfo($uploadedFileName, PATHINFO_EXTENSION)
+        );
 
         if ($extension !== "csv") {
-            $error = "Only CSV files are supported in this first importer version.";
+            $error = "Only CSV files are supported in this importer version.";
+        } elseif ($fileSize > 5 * 1024 * 1024) {
+            $error = "The CSV file must be 5 MB or smaller.";
         } elseif (!is_uploaded_file($temporaryPath)) {
             $error = "Invalid uploaded file.";
         } else {
@@ -97,6 +159,115 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
                 if (empty($parsedRows)) {
                     $error = "The CSV file did not contain any readable rows.";
+                }
+            }
+        }
+    }
+
+    // ---------------------------------------------------------
+    // Detect the visit/procedure section of the budget
+    // ---------------------------------------------------------
+    if ($error === "" && !empty($parsedRows)) {
+
+        // Find the row whose first column says "Site Procedures/Fees"
+        foreach ($parsedRows as $rowIndex => $row) {
+            $firstCell = normalize_budget_text($row[0] ?? "");
+
+            if (strcasecmp($firstCell, "Site Procedures/Fees") === 0) {
+                $headerRowIndex = $rowIndex;
+                break;
+            }
+        }
+
+        if ($headerRowIndex === null) {
+            $parseError = 'Could not find the "Site Procedures/Fees" header row.';
+        } else {
+            $headerRow = $parsedRows[$headerRowIndex];
+
+            // Find the SUBTOTAL column
+            foreach ($headerRow as $columnIndex => $cell) {
+                $headerValue = normalize_budget_text($cell);
+
+                if (strcasecmp($headerValue, "SUBTOTAL") === 0) {
+                    $subtotalColumnIndex = $columnIndex;
+                    break;
+                }
+            }
+
+            if ($subtotalColumnIndex === null) {
+                $parseError = 'Could not find the "SUBTOTAL" column.';
+            } else {
+
+                // Everything between the procedure-name column
+                // and SUBTOTAL is treated as a visit.
+                for (
+                    $columnIndex = 1;
+                    $columnIndex < $subtotalColumnIndex;
+                    $columnIndex++
+                ) {
+                    $visitName = normalize_budget_text(
+                        $headerRow[$columnIndex] ?? ""
+                    );
+
+                    if ($visitName === "") {
+                        continue;
+                    }
+
+                    $detectedVisits[] = [
+                        "column_index" => $columnIndex,
+                        "visit_name" => $visitName
+                    ];
+                }
+
+                // Read procedure rows until the first-column SUBTOTAL row.
+                for (
+                    $rowIndex = $headerRowIndex + 1;
+                    $rowIndex < count($parsedRows);
+                    $rowIndex++
+                ) {
+                    $row = $parsedRows[$rowIndex];
+
+                    $procedureName = normalize_budget_text(
+                        $row[0] ?? ""
+                    );
+
+                    if ($procedureName === "") {
+                        continue;
+                    }
+
+                    if (strcasecmp($procedureName, "SUBTOTAL") === 0) {
+                        break;
+                    }
+
+                    $amounts = [];
+                    $calculatedTotal = 0.00;
+                    $hasVisitAmount = false;
+
+                    foreach ($detectedVisits as $visit) {
+                        $columnIndex = $visit["column_index"];
+
+                        $amount = normalize_budget_amount(
+                            $row[$columnIndex] ?? ""
+                        );
+
+                        $amounts[$columnIndex] = $amount;
+
+                        if ($amount !== null) {
+                            $hasVisitAmount = true;
+                            $calculatedTotal += $amount;
+                        }
+                    }
+
+                    // Only treat the row as a procedure if it actually
+                    // contains at least one amount in a visit column.
+                    if ($hasVisitAmount) {
+                        $detectedProcedures[] = [
+                            "row_number" => $rowIndex + 1,
+                            "procedure_name" => $procedureName,
+                            "amounts" => $amounts,
+                            "calculated_total" => $calculatedTotal
+                        ];
+                    }
                 }
             }
         }
@@ -125,11 +296,25 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         </a>
 
         <div class="nav-links">
-            <a href="<?php echo htmlspecialchars($dashboardLink); ?>">Dashboard</a>
-            <a href="<?php echo BASE_URL; ?>/Studies/studies.php">Studies</a>
-            <a href="<?php echo BASE_URL; ?>/Subjects/subjects.php">Subjects</a>
-            <a href="<?php echo BASE_URL; ?>/Reports/enrollment_rates.php">Reports</a>
-            <a href="<?php echo BASE_URL; ?>/Auth/logout.php">Logout</a>
+            <a href="<?php echo htmlspecialchars($dashboardLink); ?>">
+                Dashboard
+            </a>
+
+            <a href="<?php echo BASE_URL; ?>/Studies/studies.php">
+                Studies
+            </a>
+
+            <a href="<?php echo BASE_URL; ?>/Subjects/subjects.php">
+                Subjects
+            </a>
+
+            <a href="<?php echo BASE_URL; ?>/Reports/enrollment_rates.php">
+                Reports
+            </a>
+
+            <a href="<?php echo BASE_URL; ?>/Auth/logout.php">
+                Logout
+            </a>
         </div>
     </nav>
 </header>
@@ -152,12 +337,18 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         </div>
     <?php endif; ?>
 
+    <?php if ($parseError !== ""): ?>
+        <div class="alert alert-danger">
+            <?php echo htmlspecialchars($parseError); ?>
+        </div>
+    <?php endif; ?>
+
     <section class="card" style="margin-bottom: 28px;">
         <h2>Upload CSV Budget</h2>
 
         <p>
-            This first importer version only previews the CSV.
-            It will not create or modify visit-template records.
+            Upload a CSV budget to detect visits, procedures, and
+            procedure amounts. Nothing will be saved to the study yet.
         </p>
 
         <form
@@ -180,7 +371,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             </div>
 
             <button type="submit" class="btn btn-primary">
-                Upload & Preview
+                Upload & Parse
             </button>
 
             <a
@@ -194,12 +385,129 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
     <?php if (!empty($parsedRows)): ?>
 
+        <?php if ($parseError === ""): ?>
+
+            <section class="card" style="margin-bottom: 28px;">
+                <h2>Detected Template Draft</h2>
+
+                <p>
+                    File:
+                    <strong>
+                        <?php echo htmlspecialchars($uploadedFileName); ?>
+                    </strong>
+                </p>
+
+                <div class="card-grid" style="margin-top: 20px;">
+                    <div class="card">
+                        <h3>Visits Detected</h3>
+
+                        <div class="stat-number">
+                            <?php echo count($detectedVisits); ?>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h3>Procedures Detected</h3>
+
+                        <div class="stat-number">
+                            <?php echo count($detectedProcedures); ?>
+                        </div>
+                    </div>
+                </div>
+
+                <h3 style="margin-top: 28px;">Detected Visits</h3>
+
+                <ul>
+                    <?php foreach ($detectedVisits as $visit): ?>
+                        <li>
+                            <?php echo htmlspecialchars($visit["visit_name"]); ?>
+                        </li>
+                    <?php endforeach; ?>
+                </ul>
+
+                <h3 style="margin-top: 28px;">
+                    Procedure / Visit Matrix
+                </h3>
+
+                <div style="overflow-x: auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Procedure</th>
+
+                                <?php foreach ($detectedVisits as $visit): ?>
+                                    <th>
+                                        <?php echo htmlspecialchars($visit["visit_name"]); ?>
+                                    </th>
+                                <?php endforeach; ?>
+
+                                <th>Calculated Total</th>
+                            </tr>
+                        </thead>
+
+                        <tbody>
+                            <?php foreach ($detectedProcedures as $procedure): ?>
+                                <tr>
+                                    <td>
+                                        <strong>
+                                            <?php
+                                            echo htmlspecialchars(
+                                                $procedure["procedure_name"]
+                                            );
+                                            ?>
+                                        </strong>
+                                    </td>
+
+                                    <?php foreach ($detectedVisits as $visit): ?>
+                                        <?php
+                                        $columnIndex = $visit["column_index"];
+
+                                        $amount =
+                                            $procedure["amounts"][$columnIndex]
+                                            ?? null;
+                                        ?>
+
+                                        <td>
+                                            <?php if ($amount === null): ?>
+                                                —
+                                            <?php else: ?>
+                                                $<?php echo number_format($amount, 2); ?>
+                                            <?php endif; ?>
+                                        </td>
+                                    <?php endforeach; ?>
+
+                                    <td>
+                                        <strong>
+                                            $<?php
+                                            echo number_format(
+                                                $procedure["calculated_total"],
+                                                2
+                                            );
+                                            ?>
+                                        </strong>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+
+                <p style="margin-top: 20px; color: var(--text-muted);">
+                    Draft only. No study-template records have been created.
+                </p>
+            </section>
+
+        <?php endif; ?>
+
+
         <section class="card">
             <h2>Raw CSV Preview</h2>
 
             <p>
                 File:
-                <strong><?php echo htmlspecialchars($uploadedFileName); ?></strong>
+                <strong>
+                    <?php echo htmlspecialchars($uploadedFileName); ?>
+                </strong>
             </p>
 
             <p>
