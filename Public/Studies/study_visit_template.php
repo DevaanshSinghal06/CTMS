@@ -231,6 +231,13 @@ function format_visit_timing(array $visit): string
             >
                 Back to Study
             </a>
+
+            <a
+                href="<?php echo BASE_URL; ?>/Studies/study_budget_import.php?id=<?php echo $studyId; ?>"
+                class="btn btn-primary"
+            >
+                Import Budget
+            </a>
         </div>
     </section>
 
