@@ -671,6 +671,7 @@ if ($subjectName === "") {
                             <th>Procedures</th>
                             <th>Expected Total</th>
                             <th>Submitted Total</th>
+                            <th>Action</th>
                         </tr>
                     </thead>
 
@@ -731,6 +732,15 @@ if ($subjectName === "") {
                                         );
                                         ?>
                                     <?php endif; ?>
+                                </td>
+
+                                <td>
+                                    <a
+                                        href="<?php echo BASE_URL; ?>/Studies/subject_visit.php?id=<?php echo (int) $visit["id"]; ?>"
+                                        class="btn btn-primary"
+                                    >
+                                        Open Visit
+                                    </a>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
