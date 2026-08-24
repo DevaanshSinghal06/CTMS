@@ -43,6 +43,7 @@ $stmt = $pdo->prepare("
         sv.expected_total_snapshot,
         sv.submitted_total,
         sv.notes,
+        sv.submitted_by,
         sv.submitted_at,
         sv.created_at,
 
@@ -128,7 +129,7 @@ if ($subjectName === "") {
 }
 
 // ---------------------------------------------------------
-// Save procedure progress
+// Procedure statuses
 // ---------------------------------------------------------
 
 $allowedProcedureStatuses = [
@@ -138,6 +139,17 @@ $allowedProcedureStatuses = [
     "not_applicable"
 ];
 
+$procedureStatusLabels = [
+    "pending" => "Pending",
+    "done" => "Done",
+    "not_done" => "Not Done",
+    "not_applicable" => "Not Applicable"
+];
+
+// ---------------------------------------------------------
+// POST handling
+// ---------------------------------------------------------
+
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
     if (!verify_csrf()) {
         http_response_code(400);
@@ -146,6 +158,10 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
     $action = $_POST["action"] ?? "";
 
+    // =====================================================
+    // SAVE PROGRESS
+    // =====================================================
+
     if ($action === "save_progress") {
         if ($visit["status"] !== "open") {
             $error = "Submitted visits cannot be edited.";
@@ -153,7 +169,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             $postedStatuses =
                 $_POST["procedure_status"] ?? [];
 
-            // Load the current procedure rows from the database.
             $stmt = $pdo->prepare("
                 SELECT
                     id,
@@ -242,8 +257,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                         }
 
                         if ($newStatus === "done") {
-                            // Preserve the original completion
-                            // information if it was already Done.
                             if (
                                 $update["old_status"] === "done"
                                 && $update["completed_at"] !== null
@@ -261,8 +274,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                                     $completedTimestamp;
                             }
                         } else {
-                            // If it is no longer Done, clear the
-                            // completion metadata.
                             $completedBy = null;
                             $completedAt = null;
                         }
@@ -323,8 +334,195 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                 }
             }
         }
+
+    // =====================================================
+    // SUBMIT VISIT
+    // =====================================================
+
+    } elseif ($action === "submit_visit") {
+        if ($visit["status"] !== "open") {
+            $error = "This visit has already been submitted.";
+        } else {
+            $stmt = $pdo->prepare("
+                SELECT
+                    id,
+                    status,
+                    budgeted_amount_snapshot
+                FROM subject_visit_procedures
+                WHERE subject_visit_id = ?
+                ORDER BY id
+            ");
+
+            $stmt->execute([$subjectVisitId]);
+            $submissionProcedures = $stmt->fetchAll();
+
+            if (empty($submissionProcedures)) {
+                $error =
+                    "A visit with no procedures cannot be submitted.";
+            } else {
+                $pendingCountForSubmission = 0;
+                $doneCountForSubmission = 0;
+                $notDoneCountForSubmission = 0;
+                $notApplicableCountForSubmission = 0;
+
+                $finalSubmittedTotal = 0.00;
+
+                foreach ($submissionProcedures as $procedure) {
+                    $status = $procedure["status"];
+
+                    if ($status === "pending") {
+                        $pendingCountForSubmission++;
+                    } elseif ($status === "done") {
+                        $doneCountForSubmission++;
+
+                        if (
+                            $procedure[
+                                "budgeted_amount_snapshot"
+                            ] !== null
+                        ) {
+                            $finalSubmittedTotal +=
+                                (float) $procedure[
+                                    "budgeted_amount_snapshot"
+                                ];
+                        }
+                    } elseif ($status === "not_done") {
+                        $notDoneCountForSubmission++;
+                    } elseif ($status === "not_applicable") {
+                        $notApplicableCountForSubmission++;
+                    }
+                }
+
+                if ($pendingCountForSubmission > 0) {
+                    $error =
+                        "All procedures must be resolved before submitting the visit. "
+                        . $pendingCountForSubmission
+                        . " procedure(s) are still Pending.";
+                } else {
+                    try {
+                        $pdo->beginTransaction();
+
+                        $submittedAt =
+                            date("Y-m-d H:i:s");
+
+                        $stmt = $pdo->prepare("
+                            UPDATE subject_visits
+                            SET
+                                status = 'submitted',
+                                submitted_total = ?,
+                                submitted_by = ?,
+                                submitted_at = ?
+                            WHERE id = ?
+                                AND status = 'open'
+                        ");
+
+                        $stmt->execute([
+                            $finalSubmittedTotal,
+                            $currentUserId,
+                            $submittedAt,
+                            $subjectVisitId
+                        ]);
+
+                        if ($stmt->rowCount() !== 1) {
+                            throw new RuntimeException(
+                                "Visit was not available for submission."
+                            );
+                        }
+
+                        $pdo->commit();
+
+                        log_action(
+                            "submitted",
+                            "subject_visit",
+                            $subjectVisitId,
+                            "Submitted "
+                            . $visit["visit_name_snapshot"]
+                            . " for "
+                            . $subjectName
+                            . " in "
+                            . $visit["study_code"]
+                            . ": "
+                            . $doneCountForSubmission
+                            . " Done, "
+                            . $notDoneCountForSubmission
+                            . " Not Done, "
+                            . $notApplicableCountForSubmission
+                            . " Not Applicable; submitted total $"
+                            . number_format(
+                                $finalSubmittedTotal,
+                                2
+                            )
+                        );
+
+                        header(
+                            "Location: "
+                            . BASE_URL
+                            . "/Studies/subject_visit.php?id="
+                            . $subjectVisitId
+                            . "&submitted=1"
+                        );
+                        exit;
+
+                    } catch (Throwable $e) {
+                        if ($pdo->inTransaction()) {
+                            $pdo->rollBack();
+                        }
+
+                        $error =
+                            "The visit could not be submitted. "
+                            . "The visit remains open.";
+                    }
+                }
+            }
+        }
     }
 }
+
+// ---------------------------------------------------------
+// Reload visit after any non-redirecting POST attempt
+// ---------------------------------------------------------
+
+$stmt = $pdo->prepare("
+    SELECT
+        sv.id AS subject_visit_id,
+        sv.study_subject_id,
+        sv.visit_template_id,
+        sv.visit_name_snapshot,
+        sv.target_day_snapshot,
+        sv.occurrence_number,
+        sv.scheduled_date,
+        sv.actual_visit_date,
+        sv.status,
+        sv.expected_total_snapshot,
+        sv.submitted_total,
+        sv.notes,
+        sv.submitted_by,
+        sv.submitted_at,
+        sv.created_at,
+
+        ss.study_id,
+        ss.subject_id,
+        ss.screening_status,
+
+        s.study_code,
+        s.study_name,
+
+        sub.first_name,
+        sub.last_name,
+        sub.initials
+
+    FROM subject_visits sv
+    INNER JOIN study_subjects ss
+        ON ss.id = sv.study_subject_id
+    INNER JOIN studies s
+        ON s.id = ss.study_id
+    INNER JOIN subjects sub
+        ON sub.id = ss.subject_id
+    WHERE sv.id = ?
+    LIMIT 1
+");
+
+$stmt->execute([$subjectVisitId]);
+$visit = $stmt->fetch();
 
 // ---------------------------------------------------------
 // Load actual visit procedures
@@ -349,7 +547,7 @@ $stmt->execute([$subjectVisitId]);
 $procedures = $stmt->fetchAll();
 
 // ---------------------------------------------------------
-// Calculate procedure counts and completed total
+// Calculate counts + completed total
 // ---------------------------------------------------------
 
 $pendingCount = 0;
@@ -365,13 +563,20 @@ foreach ($procedures as $procedure) {
     if ($procedureStatus === "done") {
         $doneCount++;
 
-        if ($procedure["budgeted_amount_snapshot"] !== null) {
+        if (
+            $procedure["budgeted_amount_snapshot"]
+            !== null
+        ) {
             $completedTotal +=
-                (float) $procedure["budgeted_amount_snapshot"];
+                (float) $procedure[
+                    "budgeted_amount_snapshot"
+                ];
         }
     } elseif ($procedureStatus === "not_done") {
         $notDoneCount++;
-    } elseif ($procedureStatus === "not_applicable") {
+    } elseif (
+        $procedureStatus === "not_applicable"
+    ) {
         $notApplicableCount++;
     } else {
         $pendingCount++;
@@ -392,6 +597,9 @@ $visitStatusLabel =
     ?? ucwords(
         str_replace("_", " ", $visit["status"])
     );
+
+$isSubmitted =
+    $visit["status"] === "submitted";
 ?>
 
 <!DOCTYPE html>
@@ -452,11 +660,9 @@ $visitStatusLabel =
 
     <section class="page-title">
         <h1>
-            <?php
-            echo htmlspecialchars(
+            <?php echo htmlspecialchars(
                 $visit["visit_name_snapshot"]
-            );
-            ?>
+            ); ?>
         </h1>
 
         <p>
@@ -471,6 +677,12 @@ $visitStatusLabel =
     <?php if (isset($_GET["saved"])): ?>
         <div class="alert alert-success">
             Visit progress saved successfully.
+        </div>
+    <?php endif; ?>
+
+    <?php if (isset($_GET["submitted"])): ?>
+        <div class="alert alert-success">
+            Visit submitted successfully. This visit is now locked.
         </div>
     <?php endif; ?>
 
@@ -523,7 +735,7 @@ $visitStatusLabel =
                 $<?php echo number_format($completedTotal, 2); ?>
             </div>
 
-            <p>Current value of procedures marked Done.</p>
+            <p>Value of procedures marked Done.</p>
         </div>
 
         <div class="card">
@@ -535,6 +747,23 @@ $visitStatusLabel =
 
             <p>Procedures snapshotted into this visit.</p>
         </div>
+
+        <?php if ($isSubmitted): ?>
+            <div class="card">
+                <h3>Submitted Total</h3>
+
+                <div class="stat-number" style="font-size: 24px;">
+                    $<?php
+                    echo number_format(
+                        (float) $visit["submitted_total"],
+                        2
+                    );
+                    ?>
+                </div>
+
+                <p>Final submitted value of this visit.</p>
+            </div>
+        <?php endif; ?>
 
     </section>
 
@@ -553,11 +782,9 @@ $visitStatusLabel =
                 <tr>
                     <th>Visit</th>
                     <td>
-                        <?php
-                        echo htmlspecialchars(
+                        <?php echo htmlspecialchars(
                             $visit["visit_name_snapshot"]
-                        );
-                        ?>
+                        ); ?>
                     </td>
                 </tr>
 
@@ -574,10 +801,7 @@ $visitStatusLabel =
                         <?php if ($visit["target_day_snapshot"] === null): ?>
                             N/A
                         <?php else: ?>
-                            Day
-                            <?php
-                            echo (int) $visit["target_day_snapshot"];
-                            ?>
+                            Day <?php echo (int) $visit["target_day_snapshot"]; ?>
                         <?php endif; ?>
                     </td>
                 </tr>
@@ -585,24 +809,43 @@ $visitStatusLabel =
                 <tr>
                     <th>Scheduled Date</th>
                     <td>
-                        <?php
-                        echo htmlspecialchars(
-                            $visit["scheduled_date"]
-                            ?: "N/A"
-                        );
-                        ?>
+                        <?php echo htmlspecialchars(
+                            $visit["scheduled_date"] ?: "N/A"
+                        ); ?>
                     </td>
                 </tr>
 
                 <tr>
                     <th>Actual Visit Date</th>
                     <td>
-                        <?php
-                        echo htmlspecialchars(
-                            $visit["actual_visit_date"]
-                            ?: "N/A"
-                        );
-                        ?>
+                        <?php echo htmlspecialchars(
+                            $visit["actual_visit_date"] ?: "N/A"
+                        ); ?>
+                    </td>
+                </tr>
+
+                <tr>
+                    <th>Submitted At</th>
+                    <td>
+                        <?php echo htmlspecialchars(
+                            $visit["submitted_at"] ?: "N/A"
+                        ); ?>
+                    </td>
+                </tr>
+
+                <tr>
+                    <th>Submitted Total</th>
+                    <td>
+                        <?php if ($visit["submitted_total"] === null): ?>
+                            N/A
+                        <?php else: ?>
+                            $<?php
+                            echo number_format(
+                                (float) $visit["submitted_total"],
+                                2
+                            );
+                            ?>
+                        <?php endif; ?>
                     </td>
                 </tr>
             </tbody>
@@ -650,6 +893,79 @@ $visitStatusLabel =
 
             <p>No procedures were copied into this visit.</p>
 
+        <?php elseif ($isSubmitted): ?>
+
+            <div class="alert alert-success">
+                This visit has been submitted and is locked.
+            </div>
+
+            <div class="table-card">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Procedure</th>
+                            <th>Required</th>
+                            <th>Budgeted Amount</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                        <?php foreach ($procedures as $procedure): ?>
+                            <tr>
+                                <td>
+                                    <?php echo htmlspecialchars(
+                                        $procedure[
+                                            "procedure_name_snapshot"
+                                        ]
+                                    ); ?>
+                                </td>
+
+                                <td>
+                                    <?php
+                                    echo (int) $procedure["required_snapshot"] === 1
+                                        ? "Yes"
+                                        : "No";
+                                    ?>
+                                </td>
+
+                                <td>
+                                    <?php
+                                    if (
+                                        $procedure[
+                                            "budgeted_amount_snapshot"
+                                        ] === null
+                                    ):
+                                    ?>
+                                        —
+                                    <?php else: ?>
+                                        $<?php
+                                        echo number_format(
+                                            (float) $procedure[
+                                                "budgeted_amount_snapshot"
+                                            ],
+                                            2
+                                        );
+                                        ?>
+                                    <?php endif; ?>
+                                </td>
+
+                                <td>
+                                    <?php
+                                    echo htmlspecialchars(
+                                        $procedureStatusLabels[
+                                            $procedure["status"]
+                                        ]
+                                        ?? $procedure["status"]
+                                    );
+                                    ?>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+
         <?php else: ?>
 
             <form
@@ -679,13 +995,11 @@ $visitStatusLabel =
                             <?php foreach ($procedures as $procedure): ?>
                                 <tr>
                                     <td>
-                                        <?php
-                                        echo htmlspecialchars(
+                                        <?php echo htmlspecialchars(
                                             $procedure[
                                                 "procedure_name_snapshot"
                                             ]
-                                        );
-                                        ?>
+                                        ); ?>
                                     </td>
 
                                     <td>
@@ -765,6 +1079,44 @@ $visitStatusLabel =
                     </button>
                 </div>
             </form>
+
+            <div style="margin-top: 28px;">
+                <?php if ($pendingCount > 0): ?>
+
+                    <p>
+                        <strong>
+                            Visit cannot be submitted yet.
+                        </strong>
+                        Resolve all
+                        <?php echo $pendingCount; ?>
+                        remaining Pending procedure(s).
+                    </p>
+
+                <?php else: ?>
+
+                    <form
+                        method="POST"
+                        action="<?php echo BASE_URL; ?>/Studies/subject_visit.php?id=<?php echo $subjectVisitId; ?>"
+                        onsubmit="return confirm('Submit this visit? After submission, procedure statuses will be locked.');"
+                    >
+                        <?php echo csrf_field(); ?>
+
+                        <input
+                            type="hidden"
+                            name="action"
+                            value="submit_visit"
+                        >
+
+                        <button
+                            type="submit"
+                            class="btn btn-primary"
+                        >
+                            Submit Visit
+                        </button>
+                    </form>
+
+                <?php endif; ?>
+            </div>
 
         <?php endif; ?>
     </section>

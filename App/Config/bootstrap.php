@@ -1,5 +1,7 @@
 <?php
 
+date_default_timezone_set("America/Chicago");
+
 define("ROOT_PATH", dirname(__DIR__, 2));
 define("BASE_URL", "/Public");
 
