@@ -39,6 +39,13 @@ $stmt = $pdo->prepare("
         sv.occurrence_number,
         sv.scheduled_date,
         sv.actual_visit_date,
+        sv.target_date_snapshot,
+        sv.window_start_date_snapshot,
+        sv.window_end_date_snapshot,
+        sv.scheduled_time,
+        sv.actual_start_time,
+        sv.actual_end_time,
+        sv.visit_timezone,
         sv.status,
         sv.expected_total_snapshot,
         sv.submitted_total,
@@ -146,6 +153,30 @@ $procedureStatusLabels = [
     "not_applicable" => "Not Applicable"
 ];
 
+function is_valid_visit_date(?string $value): bool
+{
+    if ($value === null) {
+        return true;
+    }
+
+    $date = DateTime::createFromFormat("Y-m-d", $value);
+
+    return $date !== false
+        && $date->format("Y-m-d") === $value;
+}
+
+function is_valid_visit_time(?string $value): bool
+{
+    if ($value === null) {
+        return true;
+    }
+
+    $time = DateTime::createFromFormat("H:i", $value);
+
+    return $time !== false
+        && $time->format("H:i") === $value;
+}
+
 // ---------------------------------------------------------
 // POST handling
 // ---------------------------------------------------------
@@ -159,10 +190,201 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     $action = $_POST["action"] ?? "";
 
     // =====================================================
+    // SAVE VISIT TIMING
+    // =====================================================
+
+    if ($action === "save_timing") {
+        if ($visit["status"] !== "open") {
+            $error = "Submitted visits cannot be edited.";
+        } else {
+            $scheduledDate =
+                trim($_POST["scheduled_date"] ?? "");
+
+            $scheduledTime =
+                trim($_POST["scheduled_time"] ?? "");
+
+            $actualVisitDate =
+                trim($_POST["actual_visit_date"] ?? "");
+
+            $actualStartTime =
+                trim($_POST["actual_start_time"] ?? "");
+
+            $actualEndTime =
+                trim($_POST["actual_end_time"] ?? "");
+
+            $scheduledDate =
+                $scheduledDate === "" ? null : $scheduledDate;
+
+            $scheduledTime =
+                $scheduledTime === "" ? null : $scheduledTime;
+
+            $actualVisitDate =
+                $actualVisitDate === "" ? null : $actualVisitDate;
+
+            $actualStartTime =
+                $actualStartTime === "" ? null : $actualStartTime;
+
+            $actualEndTime =
+                $actualEndTime === "" ? null : $actualEndTime;
+
+            if (!is_valid_visit_date($scheduledDate)) {
+                $error = "Invalid scheduled date.";
+            } elseif (!is_valid_visit_time($scheduledTime)) {
+                $error = "Invalid scheduled time.";
+            } elseif (!is_valid_visit_date($actualVisitDate)) {
+                $error = "Invalid actual visit date.";
+            } elseif (!is_valid_visit_time($actualStartTime)) {
+                $error = "Invalid actual start time.";
+            } elseif (!is_valid_visit_time($actualEndTime)) {
+                $error = "Invalid actual end time.";
+            } elseif (
+                $scheduledTime !== null
+                && $scheduledDate === null
+            ) {
+                $error =
+                    "A scheduled time requires a scheduled date.";
+            } elseif (
+                ($actualStartTime !== null || $actualEndTime !== null)
+                && $actualVisitDate === null
+            ) {
+                $error =
+                    "Actual visit times require an actual visit date.";
+            } elseif (
+                $actualEndTime !== null
+                && $actualStartTime === null
+            ) {
+                $error =
+                    "An actual end time requires an actual start time.";
+            } elseif (
+                $actualStartTime !== null
+                && $actualEndTime !== null
+                && $actualEndTime < $actualStartTime
+            ) {
+                $error =
+                    "Actual end time cannot be earlier than actual start time.";
+            } else {
+                $oldScheduledTime =
+                    $visit["scheduled_time"]
+                        ? substr($visit["scheduled_time"], 0, 5)
+                        : null;
+
+                $oldActualStartTime =
+                    $visit["actual_start_time"]
+                        ? substr($visit["actual_start_time"], 0, 5)
+                        : null;
+
+                $oldActualEndTime =
+                    $visit["actual_end_time"]
+                        ? substr($visit["actual_end_time"], 0, 5)
+                        : null;
+
+                $changes = [];
+
+                $timingComparisons = [
+                    "Scheduled Date" => [
+                        $visit["scheduled_date"],
+                        $scheduledDate
+                    ],
+                    "Scheduled Time" => [
+                        $oldScheduledTime,
+                        $scheduledTime
+                    ],
+                    "Actual Visit Date" => [
+                        $visit["actual_visit_date"],
+                        $actualVisitDate
+                    ],
+                    "Actual Start Time" => [
+                        $oldActualStartTime,
+                        $actualStartTime
+                    ],
+                    "Actual End Time" => [
+                        $oldActualEndTime,
+                        $actualEndTime
+                    ]
+                ];
+
+                foreach (
+                    $timingComparisons as $label => [$oldValue, $newValue]
+                ) {
+                    if ($oldValue !== $newValue) {
+                        $changes[] =
+                            $label
+                            . ' changed from "'
+                            . ($oldValue ?? "N/A")
+                            . '" to "'
+                            . ($newValue ?? "N/A")
+                            . '"';
+                    }
+                }
+
+                try {
+                    $pdo->beginTransaction();
+
+                    $stmt = $pdo->prepare("
+                        UPDATE subject_visits
+                        SET
+                            scheduled_date = ?,
+                            scheduled_time = ?,
+                            actual_visit_date = ?,
+                            actual_start_time = ?,
+                            actual_end_time = ?
+                        WHERE id = ?
+                            AND status = 'open'
+                    ");
+
+                    $stmt->execute([
+                        $scheduledDate,
+                        $scheduledTime,
+                        $actualVisitDate,
+                        $actualStartTime,
+                        $actualEndTime,
+                        $subjectVisitId
+                    ]);
+
+                    $pdo->commit();
+
+                    if (!empty($changes)) {
+                        log_action(
+                            "updated",
+                            "subject_visit",
+                            $subjectVisitId,
+                            "Updated "
+                            . $visit["visit_name_snapshot"]
+                            . " timing for "
+                            . $subjectName
+                            . " in "
+                            . $visit["study_code"]
+                            . ": "
+                            . implode("; ", $changes)
+                        );
+                    }
+
+                    header(
+                        "Location: "
+                        . BASE_URL
+                        . "/Studies/subject_visit.php?id="
+                        . $subjectVisitId
+                        . "&timing_saved=1"
+                    );
+                    exit;
+
+                } catch (Throwable $e) {
+                    if ($pdo->inTransaction()) {
+                        $pdo->rollBack();
+                    }
+
+                    $error =
+                        "Visit timing could not be saved. "
+                        . "No timing changes were saved.";
+                }
+            }
+        }
+
+    // =====================================================
     // SAVE PROGRESS
     // =====================================================
 
-    if ($action === "save_progress") {
+    } elseif ($action === "save_progress") {
         if ($visit["status"] !== "open") {
             $error = "Submitted visits cannot be edited.";
         } else {
@@ -491,6 +713,13 @@ $stmt = $pdo->prepare("
         sv.occurrence_number,
         sv.scheduled_date,
         sv.actual_visit_date,
+        sv.target_date_snapshot,
+        sv.window_start_date_snapshot,
+        sv.window_end_date_snapshot,
+        sv.scheduled_time,
+        sv.actual_start_time,
+        sv.actual_end_time,
+        sv.visit_timezone,
         sv.status,
         sv.expected_total_snapshot,
         sv.submitted_total,
@@ -674,6 +903,12 @@ $isSubmitted =
         </p>
     </section>
 
+    <?php if (isset($_GET["timing_saved"])): ?>
+        <div class="alert alert-success">
+            Visit timing saved successfully.
+        </div>
+    <?php endif; ?>
+
     <?php if (isset($_GET["saved"])): ?>
         <div class="alert alert-success">
             Visit progress saved successfully.
@@ -851,6 +1086,134 @@ $isSubmitted =
             </tbody>
         </table>
     </section>
+
+    <?php if (!$isSubmitted): ?>
+
+        <section
+            class="card"
+            style="margin-bottom: 28px;"
+        >
+            <h2>Visit Scheduling & Timing</h2>
+
+            <p>
+                Record when the visit was scheduled and when it
+                actually occurred.
+            </p>
+
+            <form
+                method="POST"
+                action="<?php echo BASE_URL; ?>/Studies/subject_visit.php?id=<?php echo $subjectVisitId; ?>"
+            >
+                <?php echo csrf_field(); ?>
+
+                <input
+                    type="hidden"
+                    name="action"
+                    value="save_timing"
+                >
+
+                <div class="form-group">
+                    <label for="scheduled_date">
+                        Scheduled Date
+                    </label>
+
+                    <input
+                        type="date"
+                        id="scheduled_date"
+                        name="scheduled_date"
+                        value="<?php echo htmlspecialchars(
+                            $visit["scheduled_date"] ?? ""
+                        ); ?>"
+                    >
+                </div>
+
+                <div class="form-group">
+                    <label for="scheduled_time">
+                        Scheduled Time
+                    </label>
+
+                    <input
+                        type="time"
+                        id="scheduled_time"
+                        name="scheduled_time"
+                        value="<?php echo htmlspecialchars(
+                            $visit["scheduled_time"]
+                                ? substr($visit["scheduled_time"], 0, 5)
+                                : ""
+                        ); ?>"
+                    >
+                </div>
+
+                <div class="form-group">
+                    <label for="actual_visit_date">
+                        Actual Visit Date
+                    </label>
+
+                    <input
+                        type="date"
+                        id="actual_visit_date"
+                        name="actual_visit_date"
+                        value="<?php echo htmlspecialchars(
+                            $visit["actual_visit_date"] ?? ""
+                        ); ?>"
+                    >
+                </div>
+
+                <div class="form-group">
+                    <label for="actual_start_time">
+                        Actual Start Time
+                    </label>
+
+                    <input
+                        type="time"
+                        id="actual_start_time"
+                        name="actual_start_time"
+                        value="<?php echo htmlspecialchars(
+                            $visit["actual_start_time"]
+                                ? substr($visit["actual_start_time"], 0, 5)
+                                : ""
+                        ); ?>"
+                    >
+                </div>
+
+                <div class="form-group">
+                    <label for="actual_end_time">
+                        Actual End Time
+                    </label>
+
+                    <input
+                        type="time"
+                        id="actual_end_time"
+                        name="actual_end_time"
+                        value="<?php echo htmlspecialchars(
+                            $visit["actual_end_time"]
+                                ? substr($visit["actual_end_time"], 0, 5)
+                                : ""
+                        ); ?>"
+                    >
+                </div>
+
+                <div class="form-group">
+                    <label>Visit Time Zone</label>
+
+                    <div>
+                        <?php echo htmlspecialchars(
+                            $visit["visit_timezone"]
+                                ?? "America/Chicago"
+                        ); ?>
+                    </div>
+                </div>
+
+                <button
+                    type="submit"
+                    class="btn btn-primary"
+                >
+                    Save Visit Timing
+                </button>
+            </form>
+        </section>
+
+    <?php endif; ?>
 
     <section class="card" style="margin-bottom: 28px;">
         <h2>Procedure Status Summary</h2>

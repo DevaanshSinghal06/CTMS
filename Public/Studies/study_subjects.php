@@ -606,25 +606,41 @@ $totalStudySubjects = count($studySubjects);
                             </td>
 
                             <td>
-                                <form 
-                                    id="<?php echo htmlspecialchars($formId); ?>" 
-                                    method="POST" 
-                                    action="<?php echo BASE_URL; ?>/Studies/study_subjects.php?id=<?php echo htmlspecialchars($studyId); ?>"
-                                >
-                                    <?php echo csrf_field(); ?>
-
-                                    <input type="hidden" name="action" value="update_study_subject">
-
-                                    <input 
-                                        type="hidden" 
-                                        name="study_subject_id" 
-                                        value="<?php echo htmlspecialchars($studySubject["study_subject_id"]); ?>"
+                                <div class="action-buttons">
+                                    <form 
+                                        id="<?php echo htmlspecialchars($formId); ?>" 
+                                        method="POST" 
+                                        action="<?php echo BASE_URL; ?>/Studies/study_subjects.php?id=<?php echo htmlspecialchars($studyId); ?>"
                                     >
+                                        <?php echo csrf_field(); ?>
 
-                                    <button type="submit" class="btn btn-primary btn-small">
-                                        Save
-                                    </button>
-                                </form>
+                                        <input
+                                            type="hidden"
+                                            name="action"
+                                            value="update_study_subject"
+                                        >
+
+                                        <input 
+                                            type="hidden" 
+                                            name="study_subject_id" 
+                                            value="<?php echo htmlspecialchars($studySubject["study_subject_id"]); ?>"
+                                        >
+
+                                        <button
+                                            type="submit"
+                                            class="btn btn-primary btn-small"
+                                        >
+                                            Save
+                                        </button>
+                                    </form>
+
+                                    <a
+                                        href="<?php echo BASE_URL; ?>/Studies/study_subject_visits.php?study_subject_id=<?php echo (int) $studySubject["study_subject_id"]; ?>"
+                                        class="btn btn-secondary btn-small"
+                                    >
+                                        Visits
+                                    </a>
+                                </div>
                             </td>
                         </tr>
                     <?php endforeach; ?>
