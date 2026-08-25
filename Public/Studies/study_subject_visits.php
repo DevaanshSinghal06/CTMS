@@ -35,6 +35,7 @@ $stmt = $pdo->prepare("
         ss.study_id,
         ss.subject_id,
         ss.screening_status,
+        ss.schedule_anchor_date,
         s.study_code,
         s.study_name,
         s.status AS study_status,
@@ -122,6 +123,8 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                     svt.visit_name,
                     svt.visit_order,
                     svt.target_day,
+                    svt.window_before_days,
+                    svt.window_after_days,
                     COALESCE(
                         (
                             SELECT SUM(svp.budgeted_amount)
@@ -191,6 +194,56 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                     $occurrenceNumber =
                         $maxOccurrence + 1;
 
+                    $targetDateSnapshot = null;
+                    $windowStartDateSnapshot = null;
+                    $windowEndDateSnapshot = null;
+
+                    $scheduleAnchorDate =
+                        $participation["schedule_anchor_date"] ?: null;
+
+                    if (
+                        $scheduleAnchorDate !== null
+                        && $visitTemplate["target_day"] !== null
+                    ) {
+                        $targetDay =
+                            (int) $visitTemplate["target_day"];
+
+                        $targetDate =
+                            new DateTimeImmutable($scheduleAnchorDate);
+
+                        if ($targetDay !== 0) {
+                            $targetDate =
+                                $targetDate->modify(
+                                    ($targetDay > 0 ? "+" : "")
+                                    . $targetDay
+                                    . " days"
+                                );
+                        }
+
+                        $targetDateSnapshot =
+                            $targetDate->format("Y-m-d");
+
+                        if ($visitTemplate["window_before_days"] !== null) {
+                            $windowBeforeDays =
+                                (int) $visitTemplate["window_before_days"];
+
+                            $windowStartDateSnapshot =
+                                $targetDate
+                                    ->modify("-" . $windowBeforeDays . " days")
+                                    ->format("Y-m-d");
+                        }
+
+                        if ($visitTemplate["window_after_days"] !== null) {
+                            $windowAfterDays =
+                                (int) $visitTemplate["window_after_days"];
+
+                            $windowEndDateSnapshot =
+                                $targetDate
+                                    ->modify("+" . $windowAfterDays . " days")
+                                    ->format("Y-m-d");
+                        }
+                    }
+
                     try {
                         $pdo->beginTransaction();
 
@@ -205,12 +258,15 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                                 visit_template_id,
                                 visit_name_snapshot,
                                 target_day_snapshot,
+                                target_date_snapshot,
+                                window_start_date_snapshot,
+                                window_end_date_snapshot,
                                 occurrence_number,
                                 status,
                                 expected_total_snapshot,
                                 created_by
                             )
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ");
 
                         $stmt->execute([
@@ -218,6 +274,9 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                             $visitTemplateId,
                             $visitTemplate["visit_name"],
                             $visitTemplate["target_day"],
+                            $targetDateSnapshot,
+                            $windowStartDateSnapshot,
+                            $windowEndDateSnapshot,
                             $occurrenceNumber,
                             "open",
                             $visitTemplate["expected_total"],

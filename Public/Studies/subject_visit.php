@@ -57,6 +57,9 @@ $stmt = $pdo->prepare("
         ss.study_id,
         ss.subject_id,
         ss.screening_status,
+        ss.schedule_anchor_date,
+
+        svt.is_schedule_anchor,
 
         s.study_code,
         s.study_name,
@@ -69,6 +72,10 @@ $stmt = $pdo->prepare("
 
     INNER JOIN study_subjects ss
         ON ss.id = sv.study_subject_id
+
+    LEFT JOIN study_visit_templates svt
+        ON svt.id = sv.visit_template_id
+        AND svt.study_id = ss.study_id
 
     INNER JOIN studies s
         ON s.id = ss.study_id
@@ -278,6 +285,16 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                         ? substr($visit["actual_end_time"], 0, 5)
                         : null;
 
+                $isScheduleAnchor =
+                    (int) ($visit["is_schedule_anchor"] ?? 0) === 1;
+
+                $oldScheduleAnchorDate =
+                    $visit["schedule_anchor_date"] ?: null;
+
+                $anchorDateChanged =
+                    $isScheduleAnchor
+                    && $oldScheduleAnchorDate !== $actualVisitDate;
+
                 $changes = [];
 
                 $timingComparisons = [
@@ -341,6 +358,19 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                         $subjectVisitId
                     ]);
 
+                    if ($anchorDateChanged) {
+                        $anchorStmt = $pdo->prepare("
+                            UPDATE study_subjects
+                            SET schedule_anchor_date = ?
+                            WHERE id = ?
+                        ");
+
+                        $anchorStmt->execute([
+                            $actualVisitDate,
+                            $studySubjectId
+                        ]);
+                    }
+
                     $pdo->commit();
 
                     if (!empty($changes)) {
@@ -356,6 +386,24 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                             . $visit["study_code"]
                             . ": "
                             . implode("; ", $changes)
+                        );
+                    }
+
+                    if ($anchorDateChanged) {
+                        log_action(
+                            "updated",
+                            "study_subject",
+                            $studySubjectId,
+                            "Updated schedule anchor date for "
+                            . $subjectName
+                            . " in "
+                            . $visit["study_code"]
+                            . " from "
+                            . ($oldScheduleAnchorDate ?? "N/A")
+                            . " to "
+                            . ($actualVisitDate ?? "N/A")
+                            . " based on "
+                            . $visit["visit_name_snapshot"]
                         );
                     }
 
@@ -731,6 +779,9 @@ $stmt = $pdo->prepare("
         ss.study_id,
         ss.subject_id,
         ss.screening_status,
+        ss.schedule_anchor_date,
+
+        svt.is_schedule_anchor,
 
         s.study_code,
         s.study_name,
@@ -742,6 +793,11 @@ $stmt = $pdo->prepare("
     FROM subject_visits sv
     INNER JOIN study_subjects ss
         ON ss.id = sv.study_subject_id
+
+    LEFT JOIN study_visit_templates svt
+        ON svt.id = sv.visit_template_id
+        AND svt.study_id = ss.study_id
+
     INNER JOIN studies s
         ON s.id = ss.study_id
     INNER JOIN subjects sub
