@@ -118,6 +118,36 @@ function normalize_budget_amount($value): ?float
     return $isNegative ? -$amount : $amount;
 }
 
+function find_schedule_anchor_index(array $visits): ?int
+{
+    // Prefer a Baseline visit.
+    foreach ($visits as $index => $visit) {
+        $visitName = strtolower(
+            normalize_budget_text($visit["visit_name"] ?? "")
+        );
+
+        if (str_contains($visitName, "baseline")) {
+            return $index;
+        }
+    }
+
+    // If no Baseline exists, fall back to Randomization.
+    foreach ($visits as $index => $visit) {
+        $visitName = strtolower(
+            normalize_budget_text($visit["visit_name"] ?? "")
+        );
+
+        if (
+            str_contains($visitName, "randomization")
+            || str_contains($visitName, "randomisation")
+        ) {
+            return $index;
+        }
+    }
+
+    return null;
+}
+
 function detect_target_day(string $visitName): ?int
 {
     $normalized = strtolower(trim($visitName));
@@ -240,9 +270,10 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                             visit_order,
                             target_day,
                             window_before_days,
-                            window_after_days
+                            window_after_days,
+                            is_schedule_anchor
                         )
-                        VALUES (?, ?, ?, ?, ?, NULL, NULL)
+                        VALUES (?, ?, ?, ?, ?, NULL, NULL, ?)
                     ");
 
                     foreach ($draftVisits as $visitOrderIndex => $visit) {
@@ -256,7 +287,8 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                             $armId,
                             $visitName,
                             $visitOrderIndex + 1,
-                            $targetDay
+                            $targetDay,
+                            !empty($visit["is_schedule_anchor"]) ? 1 : 0
                         ]);
 
                         $visitIdsByColumn[$columnIndex] =
@@ -518,6 +550,21 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                                 $visitName
                         ];
                     }
+
+                    // -------------------------------------
+                    // Detect scheduling anchor
+                    // -------------------------------------
+
+                    $scheduleAnchorIndex =
+                        find_schedule_anchor_index($detectedVisits);
+
+                    foreach ($detectedVisits as $index => &$visit) {
+                        $visit["is_schedule_anchor"] =
+                            $scheduleAnchorIndex !== null
+                            && $index === $scheduleAnchorIndex;
+                    }
+
+                    unset($visit);
 
                     // -------------------------------------
                     // Detect procedures
@@ -790,18 +837,25 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                         echo htmlspecialchars(
                             $visit["visit_name"]
                         );
-                        ?>
 
-                        <?php
                         $targetDay =
                             detect_target_day(
                                 $visit["visit_name"]
+                            );
+
+                        $isScheduleAnchor =
+                            !empty(
+                                $visit["is_schedule_anchor"]
                             );
                         ?>
 
                         <?php if ($targetDay !== null): ?>
                             — Target Day
                             <?php echo $targetDay; ?>
+                        <?php endif; ?>
+
+                        <?php if ($isScheduleAnchor): ?>
+                            — <strong>Scheduling Anchor: Yes</strong>
                         <?php endif; ?>
                     </li>
                 <?php endforeach; ?>
