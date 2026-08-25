@@ -446,6 +446,7 @@ $stmt = $pdo->prepare("
         sv.id,
         sv.visit_name_snapshot,
         sv.target_day_snapshot,
+        sv.target_date_snapshot,
         sv.occurrence_number,
         sv.status,
         sv.scheduled_date,
@@ -462,6 +463,7 @@ $stmt = $pdo->prepare("
         sv.id,
         sv.visit_name_snapshot,
         sv.target_day_snapshot,
+        sv.target_date_snapshot,
         sv.occurrence_number,
         sv.status,
         sv.scheduled_date,
@@ -725,6 +727,7 @@ if ($subjectName === "") {
                     <thead>
                         <tr>
                             <th>Visit</th>
+                            <th>Target Date</th>
                             <th>Occurrence</th>
                             <th>Status</th>
                             <th>Procedures</th>
@@ -741,6 +744,14 @@ if ($subjectName === "") {
                                     <?php
                                     echo htmlspecialchars(
                                         $visit["visit_name_snapshot"]
+                                    );
+                                    ?>
+                                </td>
+
+                                <td>
+                                    <?php
+                                    echo htmlspecialchars(
+                                        $visit["target_date_snapshot"] ?: "—"
                                     );
                                     ?>
                                 </td>
