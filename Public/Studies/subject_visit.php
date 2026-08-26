@@ -334,6 +334,8 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                     }
                 }
 
+                $scheduleRecalculationCount = 0;
+
                 try {
                     $pdo->beginTransaction();
 
@@ -369,6 +371,130 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                             $actualVisitDate,
                             $studySubjectId
                         ]);
+
+                        // ---------------------------------------------
+                        // Recalculate scheduling for all OPEN visits
+                        // in this study participation.
+                        // Submitted visits are intentionally untouched.
+                        // ---------------------------------------------
+
+                        $openVisitsStmt = $pdo->prepare("
+                            SELECT
+                                sv.id,
+                                sv.target_day_snapshot,
+                                sv.target_date_snapshot,
+                                sv.window_start_date_snapshot,
+                                sv.window_end_date_snapshot,
+                                svt.window_before_days,
+                                svt.window_after_days
+                            FROM subject_visits sv
+                            LEFT JOIN study_visit_templates svt
+                                ON svt.id = sv.visit_template_id
+                                AND svt.study_id = ?
+                            WHERE sv.study_subject_id = ?
+                                AND sv.status = 'open'
+                        ");
+
+                        $openVisitsStmt->execute([
+                            $studyId,
+                            $studySubjectId
+                        ]);
+
+                        $openVisits = $openVisitsStmt->fetchAll();
+
+                        $scheduleUpdateStmt = $pdo->prepare("
+                            UPDATE subject_visits
+                            SET
+                                target_date_snapshot = ?,
+                                window_start_date_snapshot = ?,
+                                window_end_date_snapshot = ?
+                            WHERE id = ?
+                                AND study_subject_id = ?
+                                AND status = 'open'
+                        ");
+
+                        foreach ($openVisits as $openVisit) {
+                            $newTargetDate = null;
+                            $newWindowStartDate = null;
+                            $newWindowEndDate = null;
+
+                            if (
+                                $actualVisitDate !== null
+                                && $openVisit["target_day_snapshot"] !== null
+                            ) {
+                                $targetDay =
+                                    (int) $openVisit["target_day_snapshot"];
+
+                                $targetDate =
+                                    (new DateTimeImmutable($actualVisitDate))
+                                        ->modify(
+                                            ($targetDay >= 0 ? "+" : "")
+                                            . $targetDay
+                                            . " days"
+                                        );
+
+                                $newTargetDate =
+                                    $targetDate->format("Y-m-d");
+
+                                if (
+                                    $openVisit["window_before_days"] !== null
+                                ) {
+                                    $windowBeforeDays =
+                                        (int) $openVisit["window_before_days"];
+
+                                    $newWindowStartDate =
+                                        $targetDate
+                                            ->modify(
+                                                "-"
+                                                . $windowBeforeDays
+                                                . " days"
+                                            )
+                                            ->format("Y-m-d");
+                                }
+
+                                if (
+                                    $openVisit["window_after_days"] !== null
+                                ) {
+                                    $windowAfterDays =
+                                        (int) $openVisit["window_after_days"];
+
+                                    $newWindowEndDate =
+                                        $targetDate
+                                            ->modify(
+                                                "+"
+                                                . $windowAfterDays
+                                                . " days"
+                                            )
+                                            ->format("Y-m-d");
+                                }
+                            }
+
+                            $oldTargetDate =
+                                $openVisit["target_date_snapshot"] ?: null;
+
+                            $oldWindowStartDate =
+                                $openVisit["window_start_date_snapshot"] ?: null;
+
+                            $oldWindowEndDate =
+                                $openVisit["window_end_date_snapshot"] ?: null;
+
+                            $scheduleChanged =
+                                $oldTargetDate !== $newTargetDate
+                                || $oldWindowStartDate !== $newWindowStartDate
+                                || $oldWindowEndDate !== $newWindowEndDate;
+
+                            if ($scheduleChanged) {
+                                $scheduleUpdateStmt->execute([
+                                    $newTargetDate,
+                                    $newWindowStartDate,
+                                    $newWindowEndDate,
+                                    (int) $openVisit["id"],
+                                    $studySubjectId
+                                ]);
+
+                                $scheduleRecalculationCount++;
+                            }
+                        }
                     }
 
                     $pdo->commit();
@@ -404,6 +530,29 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                             . ($actualVisitDate ?? "N/A")
                             . " based on "
                             . $visit["visit_name_snapshot"]
+                        );
+                    }
+
+                    if (
+                        $anchorDateChanged
+                        && $scheduleRecalculationCount > 0
+                    ) {
+                        log_action(
+                            "updated",
+                            "study_subject",
+                            $studySubjectId,
+                            "Recalculated scheduling snapshots for "
+                            . $scheduleRecalculationCount
+                            . " open visit(s) for "
+                            . $subjectName
+                            . " in "
+                            . $visit["study_code"]
+                            . (
+                                $actualVisitDate !== null
+                                    ? " after schedule anchor changed to "
+                                        . $actualVisitDate
+                                    : " after schedule anchor was cleared"
+                            )
                         );
                     }
 
