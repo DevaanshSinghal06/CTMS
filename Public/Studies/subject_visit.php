@@ -778,6 +778,15 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             if (empty($submissionProcedures)) {
                 $error =
                     "A visit with no procedures cannot be submitted.";
+            } elseif (empty($visit["actual_visit_date"])) {
+                $error =
+                    "Actual visit date is required before submitting the visit.";
+            } elseif (empty($visit["actual_start_time"])) {
+                $error =
+                    "Actual start time is required before submitting the visit.";
+            } elseif (empty($visit["actual_end_time"])) {
+                $error =
+                    "Actual end time is required before submitting the visit.";
             } else {
                 $pendingCountForSubmission = 0;
                 $doneCountForSubmission = 0;
@@ -1034,6 +1043,41 @@ $visitStatusLabel =
 
 $isSubmitted =
     $visit["status"] === "submitted";
+
+    $hasCompleteActualTiming =
+        !empty($visit["actual_visit_date"])
+        && !empty($visit["actual_start_time"])
+        && !empty($visit["actual_end_time"]);
+
+    $windowStartDate =
+        $visit["window_start_date_snapshot"] ?: null;
+
+    $windowEndDate =
+        $visit["window_end_date_snapshot"] ?: null;
+
+    $actualVisitDateForWindow =
+        $visit["actual_visit_date"] ?: null;
+
+    if (
+        $windowStartDate === null
+        && $windowEndDate === null
+    ) {
+        $windowStatus = "Not Set";
+    } elseif ($actualVisitDateForWindow === null) {
+        $windowStatus = "Not Yet Performed";
+    } elseif (
+        $windowStartDate !== null
+        && $actualVisitDateForWindow < $windowStartDate
+    ) {
+        $windowStatus = "Early";
+    } elseif (
+        $windowEndDate !== null
+        && $actualVisitDateForWindow > $windowEndDate
+    ) {
+        $windowStatus = "Late";
+    } else {
+        $windowStatus = "In Window";
+    }
 ?>
 
 <!DOCTYPE html>
@@ -1247,6 +1291,46 @@ $isSubmitted =
                 </tr>
 
                 <tr>
+                    <th>Target Date</th>
+                    <td>
+                        <?php
+                        echo htmlspecialchars(
+                            $visit["target_date_snapshot"] ?: "N/A"
+                        );
+                        ?>
+                    </td>
+                </tr>
+
+                <tr>
+                    <th>Window Start</th>
+                    <td>
+                        <?php
+                        echo htmlspecialchars(
+                            $windowStartDate ?: "N/A"
+                        );
+                        ?>
+                    </td>
+                </tr>
+
+                <tr>
+                    <th>Window End</th>
+                    <td>
+                        <?php
+                        echo htmlspecialchars(
+                            $windowEndDate ?: "N/A"
+                        );
+                        ?>
+                    </td>
+                </tr>
+
+                <tr>
+                    <th>Window Status</th>
+                    <td>
+                        <?php echo htmlspecialchars($windowStatus); ?>
+                    </td>
+                </tr>
+
+                <tr>
                     <th>Scheduled Date</th>
                     <td>
                         <?php echo htmlspecialchars(
@@ -1256,11 +1340,61 @@ $isSubmitted =
                 </tr>
 
                 <tr>
+                    <th>Scheduled Time</th>
+                    <td>
+                        <?php
+                        echo htmlspecialchars(
+                            $visit["scheduled_time"]
+                                ? substr($visit["scheduled_time"], 0, 5)
+                                : "N/A"
+                        );
+                        ?>
+                    </td>
+                </tr>
+
+                <tr>
                     <th>Actual Visit Date</th>
                     <td>
                         <?php echo htmlspecialchars(
                             $visit["actual_visit_date"] ?: "N/A"
                         ); ?>
+                    </td>
+                </tr>
+
+                <tr>
+                    <th>Actual Start Time</th>
+                    <td>
+                        <?php
+                        echo htmlspecialchars(
+                            $visit["actual_start_time"]
+                                ? substr($visit["actual_start_time"], 0, 5)
+                                : "N/A"
+                        );
+                        ?>
+                    </td>
+                </tr>
+
+                <tr>
+                    <th>Actual End Time</th>
+                    <td>
+                        <?php
+                        echo htmlspecialchars(
+                            $visit["actual_end_time"]
+                                ? substr($visit["actual_end_time"], 0, 5)
+                                : "N/A"
+                        );
+                        ?>
+                    </td>
+                </tr>
+
+                <tr>
+                    <th>Visit Time Zone</th>
+                    <td>
+                        <?php
+                        echo htmlspecialchars(
+                            $visit["visit_timezone"] ?: "America/Chicago"
+                        );
+                        ?>
                     </td>
                 </tr>
 
@@ -1658,6 +1792,17 @@ $isSubmitted =
                         Resolve all
                         <?php echo $pendingCount; ?>
                         remaining Pending procedure(s).
+                    </p>
+
+                <?php elseif (!$hasCompleteActualTiming): ?>
+
+                    <p>
+                        <strong>
+                            Visit cannot be submitted yet.
+                        </strong>
+                        Record the Actual Visit Date,
+                        Actual Start Time, and Actual End Time
+                        before submitting the visit.
                     </p>
 
                 <?php else: ?>
